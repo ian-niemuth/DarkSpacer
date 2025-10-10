@@ -1,10 +1,10 @@
-# 🚀 Darkspace Campaign Manager - Production v1.0
+# 🚀 Darkspace Campaign Manager - v1.0
 
-A space-themed RPG campaign manager for you and your friends!
+A space-themed RPG campaign manager
 
 ## 📋 What's This?
 
-Web-based character & campaign management system for tabletop RPGs set in space.
+Web-based character & campaign management system for DarkSpacer + ShadowDark RPG
 
 **Features:**
 - Character creation and management
