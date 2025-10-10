@@ -20,7 +20,6 @@ Web-based character & campaign management system for DarkSpacer + ShadowDark RPG
 - **Backend**: Node.js + Express + PostgreSQL
 - **Real-time**: Socket.io
 - **Auth**: JWT + bcrypt
-- **Hosting**: AWS Lightsail ($10/month)
 
 ## 🏃 Quick Start (Local Development)
 
