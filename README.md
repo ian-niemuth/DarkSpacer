@@ -54,16 +54,6 @@ npm run dev  # Runs on http://localhost:5173
 
 Visit http://localhost:5173 to use the app!
 
-## 🌐 Production Deployment
-
-**Ready to deploy?** Check the [docs/](./docs/) folder for deployment guides:
-
-- **[DEPLOYMENT_QUICKSTART.md](./docs/DEPLOYMENT_QUICKSTART.md)** - Quick deployment instructions
-- **[PRODUCTION_DEPLOYMENT.md](./docs/PRODUCTION_DEPLOYMENT.md)** - Full deployment guide
-- **[LIGHTSAIL_DEPLOYMENT.md](./docs/LIGHTSAIL_DEPLOYMENT.md)** - AWS Lightsail setup
-
-**Cost**: ~$10/month on AWS Lightsail
-
 ## 🔒 Security Features (v1.0)
 
 - ✅ Rate limiting on login (10 attempts per 15 min)
@@ -215,6 +205,3 @@ Private project - for personal use with friends.
 
 ---
 
-**Built for epic space adventures! 🚀✨**
-
-May your rolls be high and your bugs be few! 🎲
