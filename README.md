@@ -1,6 +1,6 @@
-# 🚀 Darkspace Campaign Manager - Production v1.0
+# 🚀 Darkspace Campaign Manager - v1.0
 
-A space-themed RPG campaign manager for you and your friends!
+A space-themed RPG campaign manager
 
 ## 📋 What's This?
 
