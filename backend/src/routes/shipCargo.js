@@ -216,7 +216,14 @@ router.post('/:shipId/cargo/load', async (req, res) => {
     ]);
     
     await client.query('COMMIT');
-    
+
+    // Emit socket event
+    const io = req.app.get('io');
+    io.to(`ship_${shipId}`).emit('ship_updated', {
+      message: `Cargo updated: Loaded ${transferQty}× ${item.item_name}`,
+      shipId: shipId
+    });
+
     res.json({
       message: `Loaded ${transferQty}× ${item.item_name} onto ship`,
       cargoUsed: cargoUsed + itemWeight,
@@ -349,9 +356,16 @@ router.post('/:shipId/cargo/unload', async (req, res) => {
     ]);
     
     await client.query('COMMIT');
-    
+
     const cargoUsed = await calculateCargoUsed(shipId);
-    
+
+    // Emit socket event
+    const io = req.app.get('io');
+    io.to(`ship_${shipId}`).emit('ship_updated', {
+      message: `Cargo updated: Unloaded ${transferQty}× ${cargoItem.item_name}`,
+      shipId: shipId
+    });
+
     res.json({
       message: `Unloaded ${transferQty}× ${cargoItem.item_name} from ship`,
       cargoUsed: cargoUsed,
@@ -438,7 +452,14 @@ router.post('/:shipId/cargo/add-direct', async (req, res) => {
     }
     
     await client.query('COMMIT');
-    
+
+    // Emit socket event
+    const io = req.app.get('io');
+    io.to(`ship_${shipId}`).emit('ship_updated', {
+      message: `Cargo updated: Added ${quantity}× ${item_name}`,
+      shipId: shipId
+    });
+
     res.json({
       message: `Added ${quantity}× ${item_name} to ship cargo`,
       cargoUsed: cargoUsed + itemWeight,
@@ -474,8 +495,15 @@ router.delete('/:shipId/cargo/:cargoItemId', async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Item not found in cargo' });
     }
-    
-    res.json({ 
+
+    // Emit socket event
+    const io = req.app.get('io');
+    io.to(`ship_${shipId}`).emit('ship_updated', {
+      message: `Cargo updated: Removed ${result.rows[0].item_name}`,
+      shipId: shipId
+    });
+
+    res.json({
       message: `Removed ${result.rows[0].item_name} from cargo`,
       item: result.rows[0]
     });

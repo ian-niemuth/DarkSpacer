@@ -21,32 +21,36 @@ router.get('/my-ships', authenticateToken, async (req, res) => {
       return res.json([]);
     }
     
-    // Get all accessible ships
+    // Get all accessible ships with status info
     const shipsResult = await pool.query(`
       SELECT DISTINCT ON (s.id)
         s.*,
-        CASE 
+        CASE
           WHEN s.owner_type = 'character' THEN c.name
           ELSE 'Party Ship'
         END as owner_name,
         sca.crew_role,
         sca.is_primary_role,
         sca.is_captain,
-        CASE 
+        CASE
           WHEN s.owner_type = 'character' AND s.owner_id = ANY($1) THEN true
           WHEN sca.is_captain = true THEN true
           ELSE false
-        END as can_purchase
+        END as can_purchase,
+        (SELECT COUNT(*) FROM ship_components WHERE ship_id = s.id AND maintenance_enabled = true) as active_components,
+        (SELECT COUNT(*) FROM ship_components WHERE ship_id = s.id) as total_components,
+        (SELECT COUNT(*) FROM ship_weapons_arrays WHERE ship_id = s.id AND maintenance_enabled = true) as active_weapon_arrays,
+        (SELECT COUNT(*) FROM ship_weapons_arrays WHERE ship_id = s.id) as total_weapon_arrays
       FROM ships s
       LEFT JOIN characters c ON s.owner_type = 'character' AND s.owner_id = c.id
       LEFT JOIN ship_crew_assignments sca ON s.id = sca.ship_id AND sca.character_id = ANY($1)
-      WHERE 
+      WHERE
         s.owner_type = 'party' OR                          -- Party ships
         s.owner_id = ANY($1) OR                            -- Ships they own
         sca.character_id = ANY($1)                         -- Ships they're crew on
       ORDER BY s.id, s.created_at DESC
     `, [characterIds]);
-    
+
     res.json(shipsResult.rows);
   } catch (error) {
     console.error('Error fetching player ships:', error);

@@ -117,7 +117,22 @@ function CharacterSheet() {
   const [recipientSearch, setRecipientSearch] = useState('');
 
   const [showHPAdjust, setShowHPAdjust] = useState(false);
-  
+
+  // Join ship rooms when ships change
+  useEffect(() => {
+    if (socket && ships.length > 0) {
+      ships.forEach(ship => {
+        socket.emit('join_ship_room', ship.id);
+      });
+
+      return () => {
+        ships.forEach(ship => {
+          socket.emit('leave_ship_room', ship.id);
+        });
+      };
+    }
+  }, [ships, socket]);
+
   useEffect(() => {
     fetchCharacter();
     fetchPartyMembers();
@@ -168,7 +183,12 @@ function CharacterSheet() {
       fetchAbilityUses();
       setTimeout(() => setNotification(''), 5000);
     });
-    
+
+    newSocket.on('ship_updated', (data) => {
+      // Ship updated - refresh ships list
+      fetchShips();
+    });
+
     return () => {
       newSocket.disconnect();
     };
@@ -888,35 +908,70 @@ function CharacterSheet() {
           <h2 className="text-lg sm:text-xl font-bold text-white mb-3 sm:mb-4 flex items-center gap-2">
             🚀 Ship Assignments
           </h2>
-          <div className="space-y-2">
-            {ships.map((ship) => (
-              <Link
-                key={ship.id}
-                to={`/ships/${ship.id}`}
-                className="block bg-gray-700 rounded p-3 hover:bg-gray-600 transition"
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="font-bold text-white">{ship.name}</div>
-                    <div className="text-sm text-gray-400 mt-1">
-                      {ship.owner_name}
-                    </div>
-                    {ship.crew_role && (
-                      <div className="text-sm text-blue-300 mt-1">
-                        Role: {ship.crew_role}
-                        {ship.is_captain && (
-                          <span className="ml-2 text-xs bg-yellow-600 px-2 py-0.5 rounded">CAPTAIN</span>
-                        )}
+          <div className="space-y-3">
+            {ships.map((ship) => {
+              const hpPercent = (ship.hp_current / ship.hp_max) * 100;
+              const hpColor = hpPercent > 50 ? 'bg-green-500' : hpPercent > 25 ? 'bg-yellow-500' : 'bg-red-500';
+
+              return (
+                <Link
+                  key={ship.id}
+                  to={`/ships/${ship.id}`}
+                  className="block bg-gray-700 rounded p-3 hover:bg-gray-600 transition border-l-4 border-purple-600"
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex-1">
+                      <div className="font-bold text-white">{ship.name}</div>
+                      <div className="text-sm text-gray-400 mt-1">
+                        {ship.owner_name}
                       </div>
-                    )}
+                      {ship.crew_role && (
+                        <div className="text-sm text-blue-300 mt-1">
+                          Role: {ship.crew_role}
+                          {ship.is_captain && (
+                            <span className="ml-2 text-xs bg-yellow-600 px-2 py-0.5 rounded">CAPTAIN</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right ml-3">
+                      <div className="text-xs text-gray-400">HP</div>
+                      <div className="text-sm font-bold text-red-400">{ship.hp_current}/{ship.hp_max}</div>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs text-gray-400">HP</div>
-                    <div className="text-sm text-red-400">{ship.hp_current}/{ship.hp_max}</div>
+
+                  {/* HP Bar */}
+                  <div className="w-full bg-gray-600 rounded-full h-2 mb-2">
+                    <div
+                      className={`h-2 rounded-full ${hpColor}`}
+                      style={{ width: `${Math.min(hpPercent, 100)}%` }}
+                    />
                   </div>
-                </div>
-              </Link>
-            ))}
+
+                  {/* Status Summary */}
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="flex items-center gap-1">
+                      <span className="text-gray-400">Components:</span>
+                      <span className={ship.active_components === ship.total_components ? 'text-green-400' : 'text-yellow-400'}>
+                        {ship.active_components}/{ship.total_components}
+                      </span>
+                      {ship.active_components < ship.total_components && (
+                        <span className="text-red-400" title="Some components offline">⚠️</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-gray-400">Weapons:</span>
+                      <span className={ship.active_weapon_arrays === ship.total_weapon_arrays ? 'text-green-400' : 'text-yellow-400'}>
+                        {ship.active_weapon_arrays}/{ship.total_weapon_arrays}
+                      </span>
+                      {ship.active_weapon_arrays < ship.total_weapon_arrays && (
+                        <span className="text-red-400" title="Some weapons offline">⚠️</span>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
           <Link
             to="/ships"

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { API_URL } from '../config/api';
+import { io } from 'socket.io-client';
+import { API_URL, WS_URL } from '../config/api';
 
 /**
  * Ship Cargo Management Tab
@@ -20,23 +21,42 @@ function ShipCargoTab({
     cargo_capacity: ship.cargo_capacity || 10
   });
   const [loading, setLoading] = useState(true);
-  
+  const [socket, setSocket] = useState(null);
+
   // For loading/unloading
   const [userCharacters, setUserCharacters] = useState([]);
   const [selectedCharacter, setSelectedCharacter] = useState(null);
   const [characterInventory, setCharacterInventory] = useState([]);
-  
+
   // For quantity modals
   const [showQuantityModal, setShowQuantityModal] = useState(false);
   const [quantityModalData, setQuantityModalData] = useState(null);
-  
+
   // For admin: add item directly
   const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [gearDatabase, setGearDatabase] = useState([]);
-  
+
   // For admin: adjust capacity
   const [showAdjustCapacity, setShowAdjustCapacity] = useState(false);
   const [newCapacity, setNewCapacity] = useState(ship.cargo_capacity || 10);
+
+  // Socket.io connection for real-time updates
+  useEffect(() => {
+    const newSocket = io(WS_URL);
+    setSocket(newSocket);
+
+    newSocket.emit('join_ship_room', ship.id);
+
+    newSocket.on('ship_updated', (data) => {
+      // Cargo updated - refresh cargo list
+      fetchCargo();
+    });
+
+    return () => {
+      newSocket.emit('leave_ship_room', ship.id);
+      newSocket.disconnect();
+    };
+  }, [ship.id]);
 
   useEffect(() => {
     fetchCargo();
