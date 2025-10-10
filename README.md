@@ -4,7 +4,7 @@ A space-themed RPG campaign manager
 
 ## 📋 What's This?
 
-Web-based character & campaign management system for tabletop RPGs set in space.
+Web-based character & campaign management system for DarkSpacer + ShadowDark RPG
 
 **Features:**
 - Character creation and management
