@@ -1,0 +1,590 @@
+// backend/src/routes/admin.js
+const express = require('express');
+const router = express.Router();
+const pool = require('../config/database');
+const { authenticateToken, isAdmin } = require('../middleware/auth');
+
+router.use(authenticateToken);
+router.use(isAdmin);
+
+router.get('/characters', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT c.*, u.username as player_username
+       FROM characters c
+       JOIN users u ON c.user_id = u.id
+       ORDER BY u.username, c.name`
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching all characters:', error);
+    res.status(500).json({ error: 'Failed to fetch characters' });
+  }
+});
+
+router.post('/characters/:id/credits', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount, reason } = req.body;
+    
+    if (!amount) {
+      return res.status(400).json({ error: 'Amount is required' });
+    }
+    
+    const result = await pool.query(
+      'UPDATE characters SET credits = credits + $1 WHERE id = $2 RETURNING *',
+      [amount, id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+    
+    await pool.query(
+      `INSERT INTO activity_log (character_id, action_type, description, amount, admin_user_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [id, 'credits_changed', reason || 'Credits adjusted by DM', amount, req.user.userId]
+    );
+    
+    const character = result.rows[0];
+    
+    const io = req.app.get('io');
+    io.to(`character_${id}`).emit('character_updated', {
+      characterId: id,
+      credits: character.credits,
+      message: amount > 0 
+        ? `You received ${amount} credits! ${reason || ''}`
+        : `You lost ${Math.abs(amount)} credits. ${reason || ''}`
+    });
+    
+    res.json({
+      message: 'Credits updated',
+      character
+    });
+  } catch (error) {
+    console.error('Error updating credits:', error);
+    res.status(500).json({ error: 'Failed to update credits' });
+  }
+});
+
+router.post('/characters/:id/damage', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { damage, source } = req.body;
+    
+    if (!damage) {
+      return res.status(400).json({ error: 'Damage amount is required' });
+    }
+    
+    const result = await pool.query(
+      `UPDATE characters 
+       SET hp_current = GREATEST(0, hp_current - $1)
+       WHERE id = $2 
+       RETURNING *`,
+      [damage, id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+    
+    const character = result.rows[0];
+    
+    await pool.query(
+      `INSERT INTO activity_log (character_id, action_type, description, amount, admin_user_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [id, 'damage_taken', source || 'Damage from combat', damage, req.user.userId]
+    );
+    
+    const io = req.app.get('io');
+    io.to(`character_${id}`).emit('character_updated', {
+      characterId: id,
+      hp_current: character.hp_current,
+      message: `You took ${damage} damage! ${character.hp_current <= 0 ? 'You are down!' : ''}`
+    });
+    
+    res.json({
+      message: 'Damage applied',
+      character
+    });
+  } catch (error) {
+    console.error('Error applying damage:', error);
+    res.status(500).json({ error: 'Failed to apply damage' });
+  }
+});
+
+router.post('/characters/:id/heal', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { healing } = req.body;
+    
+    if (!healing) {
+      return res.status(400).json({ error: 'Healing amount is required' });
+    }
+    
+    const result = await pool.query(
+      `UPDATE characters 
+       SET hp_current = LEAST(hp_max, hp_current + $1)
+       WHERE id = $2 
+       RETURNING *`,
+      [healing, id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+    
+    const character = result.rows[0];
+    
+    await pool.query(
+      `INSERT INTO activity_log (character_id, action_type, description, amount, admin_user_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [id, 'healing_received', 'Healing from DM', healing, req.user.userId]
+    );
+    
+    const io = req.app.get('io');
+    io.to(`character_${id}`).emit('character_updated', {
+      characterId: id,
+      hp_current: character.hp_current,
+      message: `You were healed for ${healing} HP!`
+    });
+    
+    res.json({
+      message: 'Healing applied',
+      character
+    });
+  } catch (error) {
+    console.error('Error applying healing:', error);
+    res.status(500).json({ error: 'Failed to apply healing' });
+  }
+});
+
+router.post('/characters/:id/give-item', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { item_name, item_type, quantity, description, weight } = req.body;
+    
+    if (!item_name) {
+      return res.status(400).json({ error: 'Item name is required' });
+    }
+    
+    const result = await pool.query(
+      `INSERT INTO inventory (character_id, item_name, item_type, quantity, description, weight)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [id, item_name, item_type, quantity || 1, description, weight || 0]
+    );
+    
+    await pool.query(
+      `INSERT INTO activity_log (character_id, action_type, description, admin_user_id)
+       VALUES ($1, $2, $3, $4)`,
+      [id, 'item_received', `Received ${item_name} from DM`, req.user.userId]
+    );
+    
+    const io = req.app.get('io');
+    io.to(`character_${id}`).emit('item_received', {
+      characterId: id,
+      item: result.rows[0],
+      message: `You received: ${item_name}!`
+    });
+    
+    res.json({
+      message: 'Item given to character',
+      item: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error giving item:', error);
+    res.status(500).json({ error: 'Failed to give item' });
+  }
+});
+
+router.post('/reset-daily-abilities', async (req, res) => {
+  try {
+    // This is a global action that affects all characters
+    // In DarkSpace/Shadowdark, daily abilities reset after a rest (typically at the start of a session)
+    
+    // Reset all abilities in database using the stored procedure
+    await pool.query('SELECT reset_all_abilities()');
+    
+    // Log the activity
+    await pool.query(
+      `INSERT INTO activity_log (action_type, description, admin_user_id)
+       VALUES ($1, $2, $3)`,
+      ['daily_abilities_reset', 'DM reset all daily abilities for all characters', req.user.userId]
+    );
+    
+    // Send real-time notification to all connected clients
+    const io = req.app.get('io');
+    io.emit('daily_abilities_reset', {
+      message: 'Daily abilities have been reset by the DM. Ready for a new session!'
+    });
+    
+    res.json({
+      message: 'Daily abilities reset for all characters',
+      timestamp: new Date()
+    });
+  } catch (error) {
+    console.error('Error resetting daily abilities:', error);
+    res.status(500).json({ error: 'Failed to reset daily abilities' });
+  }
+});
+
+router.get('/gear-database', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM gear_database ORDER BY category, name'
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching gear database:', error);
+    res.status(500).json({ error: 'Failed to fetch gear database' });
+  }
+});
+
+router.get('/activity-log', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT al.*, c.name as character_name, u.username as admin_username
+       FROM activity_log al
+       JOIN characters c ON al.character_id = c.id
+       LEFT JOIN users u ON al.admin_user_id = u.id
+       ORDER BY al.created_at DESC
+       LIMIT 100`
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching activity log:', error);
+    res.status(500).json({ error: 'Failed to fetch activity log' });
+  }
+});
+
+router.post('/characters/:id/xp', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { xp, reason } = req.body;
+    
+    if (!xp) {
+      return res.status(400).json({ error: 'XP amount is required' });
+    }
+    
+    const result = await pool.query(
+      'UPDATE characters SET xp = xp + $1 WHERE id = $2 RETURNING *',
+      [xp, id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+    
+    await pool.query(
+      `INSERT INTO activity_log (character_id, action_type, description, amount, admin_user_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [id, 'xp_gained', reason || 'XP awarded by DM', xp, req.user.userId]
+    );
+    
+    const character = result.rows[0];
+    
+    const io = req.app.get('io');
+    io.to(`character_${id}`).emit('character_updated', {
+      characterId: id,
+      xp: character.xp,
+      message: `You gained ${xp} XP! ${reason || ''}`
+    });
+    
+    res.json({
+      message: 'XP awarded',
+      character
+    });
+  } catch (error) {
+    console.error('Error awarding XP:', error);
+    res.status(500).json({ error: 'Failed to award XP' });
+  }
+});
+
+// ============================================
+// ADMIN SHIP MANAGEMENT (bypasses ownership checks)
+// ============================================
+
+// GET all ships (admin can see everything)
+router.get('/ships', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        s.*,
+        CASE 
+          WHEN s.owner_type = 'character' THEN c.name
+          ELSE 'Party Ship'
+        END as owner_name
+      FROM ships s
+      LEFT JOIN characters c ON s.owner_type = 'character' AND s.owner_id = c.id
+      ORDER BY s.created_at DESC
+    `);
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching ships:', error);
+    res.status(500).json({ error: 'Failed to fetch ships' });
+  }
+});
+
+// GET single ship with full details (admin can see any ship)
+router.get('/ships/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const shipResult = await pool.query('SELECT * FROM ships WHERE id = $1', [id]);
+    if (shipResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Ship not found' });
+    }
+    
+    const ship = shipResult.rows[0];
+    
+    // Get components
+    const componentsResult = await pool.query(`
+      SELECT sc.*, ct.name, ct.component_type, ct.description, ct.maintenance_cost
+      FROM ship_components sc
+      JOIN component_templates ct ON sc.component_template_id = ct.id
+      WHERE sc.ship_id = $1
+      ORDER BY ct.component_type, ct.name
+    `, [id]);
+    
+    // Get weapons arrays
+    const arraysResult = await pool.query(`
+      SELECT swa.*, 
+        json_agg(
+          json_build_object(
+            'id', sw.id,
+            'name', wt.name,
+            'damage', wt.damage,
+            'range', wt.range,
+            'properties', wt.properties
+          ) ORDER BY sw.array_position
+        ) FILTER (WHERE sw.id IS NOT NULL) as weapons
+      FROM ship_weapons_arrays swa
+      LEFT JOIN ship_weapons sw ON swa.id = sw.weapons_array_id
+      LEFT JOIN weapon_templates wt ON sw.weapon_template_id = wt.id
+      WHERE swa.ship_id = $1
+      GROUP BY swa.id
+    `, [id]);
+    
+    // Get armor
+    const armorResult = await pool.query(`
+      SELECT sa.*, at.name, at.category, at.ac_bonus
+      FROM ship_armor sa
+      JOIN armor_templates at ON sa.armor_template_id = at.id
+      WHERE sa.ship_id = $1
+    `, [id]);
+    
+    // Get crew
+    const crewResult = await pool.query(`
+      SELECT sca.*, c.name as character_name, c.archetype
+      FROM ship_crew_assignments sca
+      JOIN characters c ON sca.character_id = c.id
+      WHERE sca.ship_id = $1
+    `, [id]);
+    
+    res.json({
+      ...ship,
+      components: componentsResult.rows,
+      weapons_arrays: arraysResult.rows,
+      armor: armorResult.rows[0] || null,
+      crew: crewResult.rows
+    });
+  } catch (error) {
+    console.error('Error fetching ship:', error);
+    res.status(500).json({ error: 'Failed to fetch ship' });
+  }
+});
+
+// POST create new ship (admin)
+router.post('/ships', async (req, res) => {
+  try {
+    const {
+      name,
+      ship_class,
+      owner_type = 'party',
+      owner_id = null,
+      strength = 10,
+      dexterity = 10,
+      constitution = 10,
+      intelligence = 10,
+      wisdom = 10,
+      charisma = 10,
+      hp_max = 10,
+      level = 1,
+      movement = 'near',
+      system_slots_max = 10,
+      feature_slots_max = 10,
+      purchase_price = 0,
+      description = '',
+      notes = ''
+    } = req.body;
+    
+    const result = await pool.query(`
+      INSERT INTO ships (
+        name, ship_class, owner_type, owner_id,
+        strength, dexterity, constitution, intelligence, wisdom, charisma,
+        hp_current, hp_max, level, movement,
+        system_slots_used, system_slots_max, feature_slots_used, feature_slots_max, purchase_price,
+        description, notes
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $12, $13, 0, $14, 0, $15, $16, $17, $18)
+      RETURNING *
+    `, [
+      name, ship_class, owner_type, owner_id,
+      strength, dexterity, constitution, intelligence, wisdom, charisma,
+      hp_max, level, movement,
+      system_slots_max, feature_slots_max, purchase_price,
+      description, notes
+    ]);
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating ship:', error);
+    res.status(500).json({ error: 'Failed to create ship' });
+  }
+});
+
+// PUT update ship (admin)
+router.put('/ships/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    
+    const allowedFields = [
+      'name', 'ship_class', 'owner_type', 'owner_id',
+      'strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma',
+      'ac', 'hp_current', 'hp_max', 'level', 'movement',
+      'system_slots_max', 'feature_slots_max', 'purchase_price',
+      'is_active', 'description', 'notes'
+    ];
+    
+    const setClauses = [];
+    const values = [];
+    let paramCount = 1;
+    
+    Object.keys(updates).forEach(key => {
+      if (allowedFields.includes(key)) {
+        setClauses.push(`${key} = ${paramCount}`);
+        values.push(updates[key]);
+        paramCount++;
+      }
+    });
+    
+    if (setClauses.length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+    
+    setClauses.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(id);
+    
+    const query = `
+      UPDATE ships 
+      SET ${setClauses.join(', ')}
+      WHERE id = ${paramCount}
+      RETURNING *
+    `;
+    
+    const result = await pool.query(query, values);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Ship not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating ship:', error);
+    res.status(500).json({ error: 'Failed to update ship' });
+  }
+});
+
+// DELETE ship (admin)
+router.delete('/ships/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await pool.query('DELETE FROM ships WHERE id = $1 RETURNING *', [id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Ship not found' });
+    }
+    
+    res.json({ message: 'Ship deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting ship:', error);
+    res.status(500).json({ error: 'Failed to delete ship' });
+  }
+});
+
+// DELETE character (admin) - with ownership checks
+router.delete('/characters/:id', async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    const { id } = req.params;
+    
+    await client.query('BEGIN');
+    
+    // Check if character exists
+    const charResult = await client.query(
+      'SELECT * FROM characters WHERE id = $1',
+      [id]
+    );
+    
+    if (charResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Character not found' });
+    }
+    
+    const character = charResult.rows[0];
+    
+    // Check if character owns any ships
+    const shipsResult = await client.query(
+      `SELECT id, name FROM ships 
+       WHERE owner_type = 'character' AND owner_id = $1`,
+      [id]
+    );
+    
+    if (shipsResult.rows.length > 0) {
+      await client.query('ROLLBACK');
+      const shipNames = shipsResult.rows.map(s => s.name).join(', ');
+      return res.status(400).json({ 
+        error: 'Cannot delete character',
+        message: `${character.name} owns ${shipsResult.rows.length} ship(s): ${shipNames}. Transfer or delete ships first.`
+      });
+    }
+    
+    // Delete activity logs (not cascade)
+    await client.query(
+      'DELETE FROM activity_log WHERE character_id = $1',
+      [id]
+    );
+    
+    // Delete character (will cascade delete inventory and ship crew assignments)
+    await client.query(
+      'DELETE FROM characters WHERE id = $1',
+      [id]
+    );
+    
+    await client.query('COMMIT');
+    
+    // Send real-time notification
+    const io = req.app.get('io');
+    io.emit('character_deleted', {
+      characterId: id,
+      message: `${character.name} has been deleted`
+    });
+    
+    res.json({ 
+      message: 'Character deleted successfully',
+      characterName: character.name
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error deleting character:', error);
+    res.status(500).json({ error: 'Failed to delete character' });
+  } finally {
+    client.release();
+  }
+});
+
+module.exports = router;

@@ -1,0 +1,22 @@
+// This file contains the additions needed for the Gift button
+// Search for this pattern in your CharacterSheet.jsx and add the Gift button before the Discard button
+
+// LOCATION 1: In the main inventory section (around line 1000+), add this BEFORE the "Discard button for energy cells" comment:
+
+                                  {/* Gift button - only if not equipped and not loaded */}
+                                  {!item.equipped && !item.in_use_by_item_id && !item.loaded_energy_cell_id && (
+                                    <button
+                                      onClick={() => openGiftItem(item)}
+                                      className="text-xs bg-indigo-600 hover:bg-indigo-700 px-3 py-1 rounded whitespace-nowrap"
+                                      disabled={partyMembers.length === 0}
+                                      title={partyMembers.length === 0 ? 'No other characters available' : 'Gift to another character'}
+                                    >
+                                      🎁 Gift
+                                    </button>
+                                  )}
+
+// This should appear in TWO locations in the inventory rendering:
+// 1. In the categorized items section (weapons, armor, gear, consumables)
+// 2. In the "Other Items" section
+
+// Add it right before the existing "Discard button for energy cells" comment in BOTH places

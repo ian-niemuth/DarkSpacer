@@ -1,0 +1,266 @@
+// ===================================================================
+// ADD THESE ADDITIONS TO CharacterSheet.jsx
+// ===================================================================
+
+// 1. ADD GIFT BUTTON TO INVENTORY ITEMS
+// Find where inventory items are rendered (around line 1100-1200)
+// Add this button BEFORE the existing Discard/Use buttons in the button column
+
+                                  {/* Gift button - only if not equipped and not loaded */}
+                                  {!item.equipped && !item.in_use_by_item_id && !item.loaded_energy_cell_id && (
+                                    <button
+                                      onClick={() => openGiftItem(item)}
+                                      className="text-xs bg-indigo-600 hover:bg-indigo-700 px-3 py-1 rounded whitespace-nowrap"
+                                      disabled={partyMembers.length === 0}
+                                      title={partyMembers.length === 0 ? 'No other characters available' : 'Gift to another character'}
+                                    >
+                                      🎁 Gift
+                                    </button>
+                                  )}
+
+// Add this button in TWO places:
+// 1. In the categorized items section (weapons, armor, gear, consumables) 
+// 2. In the "Other Items" section
+// Place it right after the "Use" button and before the "Discard" button
+
+
+// ===================================================================
+// 2. ADD THESE TWO MODALS AT THE END, BEFORE THE CLOSING </div>
+// (After the Properties Guide Modal and before the final </div>)
+// ===================================================================
+
+      {/* Transfer Credits Modal */}
+      {showTransferCredits && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full border border-gray-700">
+            <h2 className="text-xl font-bold text-white mb-4">💸 Transfer Credits</h2>
+            
+            <div className="mb-4">
+              <div className="text-sm text-gray-400 mb-2">Your Balance: <span className="text-yellow-400 font-bold">{character.credits}cr</span></div>
+              
+              {/* Amount Input */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-2">Amount</label>
+                <input
+                  type="number"
+                  value={transferAmount}
+                  onChange={(e) => setTransferAmount(e.target.value)}
+                  placeholder="Enter amount"
+                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                  min="1"
+                  max={character.credits}
+                />
+              </div>
+
+              {/* Recipient Search */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-2">Search Recipient</label>
+                <input
+                  type="text"
+                  value={recipientSearch}
+                  onChange={(e) => setRecipientSearch(e.target.value)}
+                  placeholder="Search by name..."
+                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white mb-2"
+                />
+              </div>
+
+              {/* Recipient List */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-2">Select Recipient</label>
+                <div className="max-h-48 overflow-y-auto space-y-2 bg-gray-900 rounded p-2">
+                  {partyMembers
+                    .filter(member => 
+                      recipientSearch === '' || 
+                      member.name.toLowerCase().includes(recipientSearch.toLowerCase())
+                    )
+                    .map((member) => (
+                      <button
+                        key={member.id}
+                        onClick={() => setSelectedRecipient(member.id.toString())}
+                        className={`w-full text-left p-3 rounded transition ${
+                          selectedRecipient === member.id.toString()
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        }`}
+                      >
+                        <div className="font-bold">{member.name}</div>
+                        {member.user_id && (
+                          <div className="text-xs text-gray-400">User ID: {member.user_id}</div>
+                        )}
+                      </button>
+                    ))}
+                  {partyMembers.filter(member => 
+                    recipientSearch === '' || 
+                    member.name.toLowerCase().includes(recipientSearch.toLowerCase())).length === 0 && (
+                    <div className="text-gray-500 text-sm p-2">No characters found</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Note (optional) */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-2">Note (optional)</label>
+                <input
+                  type="text"
+                  value={transferNote}
+                  onChange={(e) => setTransferNote(e.target.value)}
+                  placeholder="e.g., 'For supplies'"
+                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                />
+              </div>
+            </div>
+
+            {/* Summary */}
+            {selectedRecipient && transferAmount && (
+              <div className="bg-gray-900 rounded p-3 mb-4">
+                <div className="text-sm text-gray-400">Transfer Summary:</div>
+                <div className="text-white mt-1">
+                  <span className="font-bold text-yellow-400">{transferAmount}cr</span> to{' '}
+                  <span className="font-bold">{partyMembers.find(p => p.id === parseInt(selectedRecipient))?.name}</span>
+                </div>
+                {transferNote && (
+                  <div className="text-sm text-gray-400 mt-1">Note: {transferNote}</div>
+                )}
+                <div className="text-sm text-gray-400 mt-2">
+                  New balance: <span className="text-yellow-400 font-bold">{character.credits - parseInt(transferAmount || 0)}cr</span>
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={handleTransferCredits}
+                disabled={!selectedRecipient || !transferAmount || parseInt(transferAmount) <= 0}
+                className="flex-1 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded font-bold transition"
+              >
+                Confirm Transfer
+              </button>
+              <button
+                onClick={() => setShowTransferCredits(false)}
+                className="flex-1 bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Gift Item Modal */}
+      {showGiftItem && selectedGiftItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full border border-gray-700">
+            <h2 className="text-xl font-bold text-white mb-4">🎁 Gift Item</h2>
+            
+            <div className="mb-4">
+              {/* Item Info */}
+              <div className="bg-gray-900 rounded p-3 mb-4">
+                <div className="font-bold text-white text-lg">{selectedGiftItem.item_name}</div>
+                {selectedGiftItem.description && (
+                  <div className="text-sm text-gray-400 mt-1">{selectedGiftItem.description}</div>
+                )}
+                <div className="text-sm text-gray-500 mt-2">
+                  You have: <span className="text-white font-bold">{selectedGiftItem.quantity}</span>
+                </div>
+              </div>
+
+              {/* Quantity Input (only if > 1) */}
+              {selectedGiftItem.quantity > 1 && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Quantity to Gift</label>
+                  <input
+                    type="number"
+                    value={giftQuantity}
+                    onChange={(e) => setGiftQuantity(parseInt(e.target.value) || 1)}
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                    min="1"
+                    max={selectedGiftItem.quantity}
+                  />
+                </div>
+              )}
+
+              {/* Recipient Search */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-2">Search Recipient</label>
+                <input
+                  type="text"
+                  value={recipientSearch}
+                  onChange={(e) => setRecipientSearch(e.target.value)}
+                  placeholder="Search by name..."
+                  className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white mb-2"
+                />
+              </div>
+
+              {/* Recipient List */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-2">Select Recipient</label>
+                <div className="max-h-48 overflow-y-auto space-y-2 bg-gray-900 rounded p-2">
+                  {partyMembers
+                    .filter(member => 
+                      recipientSearch === '' || 
+                      member.name.toLowerCase().includes(recipientSearch.toLowerCase())
+                    )
+                    .map((member) => (
+                      <button
+                        key={member.id}
+                        onClick={() => setSelectedRecipient(member.id.toString())}
+                        className={`w-full text-left p-3 rounded transition ${
+                          selectedRecipient === member.id.toString()
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        }`}
+                      >
+                        <div className="font-bold">{member.name}</div>
+                        {member.user_id && (
+                          <div className="text-xs text-gray-400">User ID: {member.user_id}</div>
+                        )}
+                      </button>
+                    ))}
+                  {partyMembers.filter(member => 
+                    recipientSearch === '' || 
+                    member.name.toLowerCase().includes(recipientSearch.toLowerCase())).length === 0 && (
+                    <div className="text-gray-500 text-sm p-2">No characters found</div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Summary */}
+            {selectedRecipient && (
+              <div className="bg-gray-900 rounded p-3 mb-4">
+                <div className="text-sm text-gray-400">Gift Summary:</div>
+                <div className="text-white mt-1">
+                  <span className="font-bold">{giftQuantity}× {selectedGiftItem.item_name}</span> to{' '}
+                  <span className="font-bold text-indigo-300">{partyMembers.find(p => p.id === parseInt(selectedRecipient))?.name}</span>
+                </div>
+                {selectedGiftItem.quantity > 1 && (
+                  <div className="text-sm text-gray-400 mt-2">
+                    You will have: <span className="text-white font-bold">{selectedGiftItem.quantity - giftQuantity}</span> remaining
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={handleGiftItem}
+                disabled={!selectedRecipient || giftQuantity <= 0 || giftQuantity > selectedGiftItem.quantity}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded font-bold transition"
+              >
+                Confirm Gift
+              </button>
+              <button
+                onClick={() => {
+                  setShowGiftItem(false);
+                  setSelectedGiftItem(null);
+                }}
+                className="flex-1 bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}

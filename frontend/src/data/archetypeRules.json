@@ -1,0 +1,195 @@
+{
+  "archetypeRules": {
+    "Strong": {
+      "description": "Grunts, teamsters, gladiators, and bodyguards",
+      "weapons": {
+        "allowed": ["All MELEE weapons"],
+        "detail": {
+          "melee": ["light", "standard", "heavy"],
+          "ranged": []
+        }
+      },
+      "armor": {
+        "allowed": ["All armor types"],
+        "detail": ["light", "medium", "heavy", "energy", "helmet", "shield"]
+      },
+      "icon": "💪"
+    },
+    "Quick": {
+      "description": "Pilots, thieves, gunslingers, and assassins",
+      "weapons": {
+        "allowed": ["Light MELEE", "Light RANGED"],
+        "detail": {
+          "melee": ["light"],
+          "ranged": ["light"]
+        }
+      },
+      "armor": {
+        "allowed": ["Light armor", "Helmets", "Shields"],
+        "detail": ["light", "helmet", "shield"]
+      },
+      "icon": "⚡"
+    },
+    "Tough": {
+      "description": "Soldiers, bounty hunters, scrappers, and bruisers",
+      "weapons": {
+        "allowed": ["Heavy MELEE", "Heavy RANGED"],
+        "detail": {
+          "melee": ["heavy"],
+          "ranged": ["heavy"]
+        }
+      },
+      "armor": {
+        "allowed": ["All armor types"],
+        "detail": ["light", "medium", "heavy", "energy", "helmet", "shield"]
+      },
+      "icon": "🛡️"
+    },
+    "Clever": {
+      "description": "Scientists, hackers, strategists, and inventors",
+      "weapons": {
+        "allowed": ["Light RANGED only"],
+        "detail": {
+          "melee": [],
+          "ranged": ["light"]
+        }
+      },
+      "armor": {
+        "allowed": ["NO ARMOR", "Shields only"],
+        "detail": ["shield"]
+      },
+      "icon": "🧠"
+    },
+    "Wise": {
+      "description": "Mystics, sages, counselors, and monks",
+      "weapons": {
+        "allowed": ["Light MELEE only"],
+        "detail": {
+          "melee": ["light"],
+          "ranged": []
+        }
+      },
+      "armor": {
+        "allowed": ["NO ARMOR", "Shields only"],
+        "detail": ["shield"]
+      },
+      "icon": "🧘"
+    },
+    "Charming": {
+      "description": "Scoundrels, performers, politicians, and captains",
+      "weapons": {
+        "allowed": ["All Pistols and Blasters"],
+        "detail": {
+          "melee": [],
+          "ranged": ["light", "standard", "heavy"],
+          "special": "pistols_and_blasters_only"
+        }
+      },
+      "armor": {
+        "allowed": ["Light armor", "Helmets", "Shields"],
+        "detail": ["light", "helmet", "shield"]
+      },
+      "icon": "🎭"
+    }
+  },
+  "weaponCategories": {
+    "melee": {
+      "light": {
+        "examples": ["Combat Blade", "Vibro-Knife", "Dagger", "Force Baton"],
+        "description": "Light, one-handed melee weapons"
+      },
+      "standard": {
+        "examples": ["Longsword", "Force Hammer", "Axe", "Vibro-Sword"],
+        "description": "Standard one-handed melee weapons"
+      },
+      "heavy": {
+        "examples": ["Greatsword", "Great Axe", "Maul", "Vibro-Great Axe"],
+        "description": "Heavy, two-handed melee weapons"
+      }
+    },
+    "ranged": {
+      "light": {
+        "examples": ["Light Pistol", "Light Blaster Pistol", "Holdout Blaster", "Carbine"],
+        "description": "Light ranged weapons (pistols and light rifles)"
+      },
+      "standard": {
+        "examples": ["Pistol", "Blaster Pistol", "Assault Rifle", "Blaster Rifle"],
+        "description": "Standard ranged weapons"
+      },
+      "heavy": {
+        "examples": ["Heavy Pistol", "Heavy Blaster Pistol", "Sniper Rifle", "Heavy Blaster Rifle"],
+        "description": "Heavy ranged weapons"
+      }
+    }
+  },
+  "armorCategories": {
+    "light": {
+      "ac": "11 + DEX",
+      "slots": 1,
+      "examples": ["Light Armor", "Leather Armor", "Enviro-Suit"],
+      "description": "Flexible armor allowing full mobility"
+    },
+    "medium": {
+      "ac": "13 + DEX",
+      "slots": 2,
+      "examples": ["Medium Armor", "Chainmail", "Combat Armor"],
+      "description": "Balanced protection with some mobility"
+    },
+    "heavy": {
+      "ac": "15",
+      "slots": 3,
+      "examples": ["Heavy Armor", "Plate Mail", "Power Armor"],
+      "description": "Maximum protection, no DEX bonus"
+    },
+    "energy": {
+      "ac": "15",
+      "slots": 1,
+      "examples": ["Energy Armor", "Shielded Armor"],
+      "description": "Energy-based protection, requires energy cell"
+    },
+    "helmet": {
+      "ac": "+1",
+      "slots": 1,
+      "examples": ["Helmet", "Combat Helmet"],
+      "description": "Head protection, adds +1 AC"
+    },
+    "shield": {
+      "ac": "+2",
+      "slots": 1,
+      "examples": ["Ballistic Shield", "Energy Shield"],
+      "description": "Handheld defense, adds +2 AC (anyone can use)"
+    }
+  },
+  "equipmentSlots": {
+    "primary_weapon": {
+      "label": "Primary Weapon",
+      "description": "Main hand weapon",
+      "icon": "⚔️"
+    },
+    "secondary_weapon": {
+      "label": "Secondary Weapon",
+      "description": "Off-hand weapon or second 1H weapon",
+      "icon": "🗡️"
+    },
+    "body_armor": {
+      "label": "Body Armor",
+      "description": "Chest armor piece",
+      "icon": "🦺"
+    },
+    "helmet": {
+      "label": "Helmet",
+      "description": "Head protection (+1 AC)",
+      "icon": "⛑️"
+    },
+    "shield": {
+      "label": "Shield",
+      "description": "Shield (+2 AC, requires 1 hand)",
+      "icon": "🛡️"
+    }
+  },
+  "restrictions": {
+    "twoHandedWeapon": "2H weapons block secondary weapon and shield slots",
+    "shieldsAllowed": "Shields can be used by ALL archetypes",
+    "energyCellRequired": "Items with EC property require energy cell to equip"
+  }
+}
