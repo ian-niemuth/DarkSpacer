@@ -219,6 +219,23 @@ export function UpgradesTab({ ship, onUpdate, showSuccess, showError }) {
     }
   };
 
+  const handleUpgradeHP = async (increase) => {
+    const cost = increase * 1000;
+    if (!confirm(`Upgrade HP by +${increase}?\n\nCost: ${cost}cr\n\n⚠️ REMINDER: DM must manually deduct ${cost}cr from ${upgradeInfo.owner.name}'s credits!`)) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(`${API_URL}/${ship.id}/upgrade-hp`, { increase }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      onUpdate();
+      fetchUpgradeInfo();
+      showSuccess(`Successfully upgraded HP! Remember to deduct ${cost}cr from ${upgradeInfo.owner.name}.`);
+    } catch (error) {
+      showError(error.response?.data?.error || 'Failed to upgrade HP');
+    }
+  };
+
   if (loading) {
     return <div className="text-gray-400">Loading upgrade options...</div>;
   }
@@ -240,6 +257,39 @@ export function UpgradesTab({ ship, onUpdate, showSuccess, showError }) {
             <div>• All upgrades are approved instantly by DM</div>
             <div>• Costs shown below are for reference only</div>
             <div>• <span className="font-bold">DM must manually deduct credits from owner/party funds</span></div>
+          </div>
+        </div>
+      </div>
+
+      {/* HP Upgrade */}
+      <div className="bg-gray-700 rounded p-4">
+        <h3 className="font-bold text-white mb-4">Upgrade Ship HP (1000cr per +1)</h3>
+        <div className="bg-gray-800 rounded p-4">
+          <div className="flex justify-between items-center mb-3">
+            <div>
+              <span className="font-bold text-white text-lg">HP Max</span>
+              <div className="text-gray-400 text-sm mt-1">Current: {upgradeInfo.hp.current_max}</div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleUpgradeHP(1)}
+              className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold"
+            >
+              +1 HP (1000cr)
+            </button>
+            <button
+              onClick={() => handleUpgradeHP(5)}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold"
+            >
+              +5 HP (5000cr)
+            </button>
+            <button
+              onClick={() => handleUpgradeHP(10)}
+              className="flex-1 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded font-bold"
+            >
+              +10 HP (10000cr)
+            </button>
           </div>
         </div>
       </div>
@@ -321,6 +371,7 @@ export function UpgradesTab({ ship, onUpdate, showSuccess, showError }) {
       <div className="bg-gray-700 border border-gray-600 rounded p-4">
         <h4 className="font-bold text-white mb-2">📖 Upgrade Rules</h4>
         <ul className="text-xs text-gray-300 space-y-1">
+          <li>• HP can be increased by any amount for 1000cr per +1</li>
           <li>• Stats can be increased in +1 increments for 1000cr each</li>
           <li>• Stats cannot exceed 18</li>
           <li>• Additional slots cost 1000cr each</li>

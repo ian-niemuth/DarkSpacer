@@ -149,34 +149,41 @@ router.put('/:shipId/weapons-arrays/:arrayId/maintenance', async (req, res) => {
   try {
     const { shipId, arrayId } = req.params;
     const { maintenance_enabled, maintenance_paid } = req.body;
-    
+
     const updates = [];
     const values = [];
     let paramCount = 1;
-    
+
     if (typeof maintenance_enabled !== 'undefined') {
       updates.push(`maintenance_enabled = $${paramCount++}`);
       values.push(maintenance_enabled);
     }
-    
+
     if (typeof maintenance_paid !== 'undefined') {
       updates.push(`maintenance_paid = $${paramCount++}`);
       values.push(maintenance_paid);
     }
-    
+
     values.push(arrayId, shipId);
-    
+
     const result = await pool.query(`
-      UPDATE ship_weapons_arrays 
+      UPDATE ship_weapons_arrays
       SET ${updates.join(', ')}
       WHERE id = $${paramCount++} AND ship_id = $${paramCount}
       RETURNING *
     `, values);
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Weapons array not found' });
     }
-    
+
+    // Emit socket event
+    const io = req.app.get('io');
+    io.to(`ship_${shipId}`).emit('ship_updated', {
+      message: 'Weapons array maintenance status updated',
+      shipId: shipId
+    });
+
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Error updating weapons array maintenance:', error);

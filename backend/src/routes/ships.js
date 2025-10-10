@@ -325,7 +325,7 @@ router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
-    
+
     const allowedFields = [
       'name', 'ship_class', 'owner_type', 'owner_id',
       'strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma',
@@ -333,11 +333,11 @@ router.put('/:id', async (req, res) => {
       'system_slots_max', 'feature_slots_max', 'cargo_capacity', 'purchase_price',
       'is_active', 'description', 'notes'
     ];
-    
+
     const setClauses = [];
     const values = [];
     let paramCount = 1;
-    
+
     Object.keys(updates).forEach(key => {
       if (allowedFields.includes(key)) {
         setClauses.push(`${key} = $${paramCount}`);
@@ -345,31 +345,75 @@ router.put('/:id', async (req, res) => {
         paramCount++;
       }
     });
-    
+
     if (setClauses.length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' });
     }
-    
+
     setClauses.push('updated_at = CURRENT_TIMESTAMP');
     values.push(id);
-    
+
     const query = `
-      UPDATE ships 
+      UPDATE ships
       SET ${setClauses.join(', ')}
       WHERE id = $${paramCount}
       RETURNING *
     `;
-    
+
     const result = await pool.query(query, values);
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Ship not found' });
     }
-    
+
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Error updating ship:', error);
     res.status(500).json({ error: 'Failed to update ship' });
+  }
+});
+
+// PATCH adjust ship HP (for combat)
+router.patch('/:id/hp', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount } = req.body;
+
+    if (typeof amount !== 'number') {
+      return res.status(400).json({ error: 'Amount must be a number' });
+    }
+
+    // Get current ship data
+    const shipResult = await pool.query('SELECT hp_current, hp_max FROM ships WHERE id = $1', [id]);
+
+    if (shipResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Ship not found' });
+    }
+
+    const ship = shipResult.rows[0];
+    const newHP = Math.max(0, Math.min(ship.hp_current + amount, ship.hp_max));
+
+    // Update HP
+    const result = await pool.query(
+      'UPDATE ships SET hp_current = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+      [newHP, id]
+    );
+
+    // Emit socket event
+    const io = req.app.get('io');
+    io.to(`ship_${id}`).emit('ship_updated', {
+      message: `Ship HP adjusted by ${amount}`,
+      shipId: id
+    });
+
+    res.json({
+      message: `HP adjusted by ${amount}`,
+      hp_current: newHP,
+      hp_max: ship.hp_max
+    });
+  } catch (error) {
+    console.error('Error adjusting ship HP:', error);
+    res.status(500).json({ error: 'Failed to adjust HP' });
   }
 });
 
@@ -540,34 +584,41 @@ router.put('/:shipId/components/:componentId/maintenance', async (req, res) => {
   try {
     const { shipId, componentId } = req.params;
     const { maintenance_enabled, maintenance_paid } = req.body;
-    
+
     const updates = [];
     const values = [];
     let paramCount = 1;
-    
+
     if (typeof maintenance_enabled !== 'undefined') {
       updates.push(`maintenance_enabled = $${paramCount++}`);
       values.push(maintenance_enabled);
     }
-    
+
     if (typeof maintenance_paid !== 'undefined') {
       updates.push(`maintenance_paid = $${paramCount++}`);
       values.push(maintenance_paid);
     }
-    
+
     values.push(componentId, shipId);
-    
+
     const result = await pool.query(`
-      UPDATE ship_components 
+      UPDATE ship_components
       SET ${updates.join(', ')}
       WHERE id = $${paramCount++} AND ship_id = $${paramCount}
       RETURNING *
     `, values);
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Component not found' });
     }
-    
+
+    // Emit socket event
+    const io = req.app.get('io');
+    io.to(`ship_${shipId}`).emit('ship_updated', {
+      message: 'Component maintenance status updated',
+      shipId: shipId
+    });
+
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Error updating component maintenance:', error);

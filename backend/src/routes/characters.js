@@ -296,6 +296,7 @@ router.patch('/:id/hp', async (req, res) => {
         character: result.rows[0],
         silent: true // Don't show notification for HP updates
       });
+      io.emit('admin_refresh'); // Notify admin panel
     }
 
     res.json({

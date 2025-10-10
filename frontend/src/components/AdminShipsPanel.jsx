@@ -326,10 +326,10 @@ function ShipDetailView({
 
       {/* Tab Navigation */}
       <div className="bg-gray-800 rounded-lg border border-gray-700">
-        <div className="flex border-b border-gray-700">
+        <div className="flex border-b border-gray-700 overflow-x-auto">
           <button
             onClick={() => setActiveTab('overview')}
-            className={`px-6 py-3 font-bold ${
+            className={`px-6 py-3 font-bold whitespace-nowrap ${
               activeTab === 'overview'
                 ? 'bg-gray-700 text-white border-b-2 border-purple-500'
                 : 'text-gray-400 hover:text-white'
@@ -338,8 +338,18 @@ function ShipDetailView({
             📊 Overview
           </button>
           <button
+            onClick={() => setActiveTab('combat')}
+            className={`px-6 py-3 font-bold whitespace-nowrap ${
+              activeTab === 'combat'
+                ? 'bg-gray-700 text-white border-b-2 border-red-500'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            ⚔️ Combat
+          </button>
+          <button
             onClick={() => setActiveTab('components')}
-            className={`px-6 py-3 font-bold ${
+            className={`px-6 py-3 font-bold whitespace-nowrap ${
               activeTab === 'components'
                 ? 'bg-gray-700 text-white border-b-2 border-purple-500'
                 : 'text-gray-400 hover:text-white'
@@ -402,6 +412,14 @@ function ShipDetailView({
         <div className="p-6">
           {activeTab === 'overview' && (
             <OverviewTab ship={ship} />
+          )}
+          {activeTab === 'combat' && (
+            <CombatTab
+              ship={ship}
+              onUpdate={onUpdate}
+              showSuccess={showSuccess}
+              showError={showError}
+            />
           )}
           {activeTab === 'components' && (
             <ComponentsTab 
@@ -534,7 +552,129 @@ function OverviewTab({ ship }) {
   );
 }
 
-// Components tab will continue in next file...
-// I'll create separate files for the complex tabs
+// ============================================
+// COMBAT TAB
+// ============================================
+function CombatTab({ ship, onUpdate, showSuccess, showError }) {
+  const handleAdjustHP = async (amount) => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.patch(`${API_URL}/${ship.id}/hp`, {
+        amount: amount
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      onUpdate();
+      showSuccess(`HP adjusted by ${amount >= 0 ? '+' : ''}${amount}`);
+    } catch (error) {
+      showError(error.response?.data?.error || 'Failed to adjust HP');
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* HP Control */}
+      <div className="bg-gray-700 rounded p-6">
+        <h3 className="font-bold text-white text-lg mb-4">Hit Points</h3>
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-4xl font-bold">
+            <span className="text-red-400">{ship.hp_current}</span>
+            <span className="text-gray-400"> / </span>
+            <span className="text-white">{ship.hp_max}</span>
+          </div>
+          <div className="text-sm text-gray-400">
+            {Math.round((ship.hp_current / ship.hp_max) * 100)}%
+          </div>
+        </div>
+
+        {/* HP Bar */}
+        <div className="w-full bg-gray-800 rounded-full h-6 mb-4">
+          <div
+            className={`h-6 rounded-full transition-all ${
+              ship.hp_current === 0 ? 'bg-gray-600' :
+              ship.hp_current <= ship.hp_max * 0.25 ? 'bg-red-600' :
+              ship.hp_current <= ship.hp_max * 0.5 ? 'bg-yellow-600' :
+              'bg-green-600'
+            }`}
+            style={{ width: `${Math.max((ship.hp_current / ship.hp_max) * 100, 0)}%` }}
+          />
+        </div>
+
+        {/* HP Adjustment Buttons */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <h4 className="text-sm font-bold text-red-400 mb-2">Deal Damage</h4>
+            <div className="grid grid-cols-3 gap-2">
+              <button onClick={() => handleAdjustHP(-1)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded font-bold">-1</button>
+              <button onClick={() => handleAdjustHP(-5)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded font-bold">-5</button>
+              <button onClick={() => handleAdjustHP(-10)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded font-bold">-10</button>
+            </div>
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-green-400 mb-2">Heal/Repair</h4>
+            <div className="grid grid-cols-3 gap-2">
+              <button onClick={() => handleAdjustHP(1)} className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded font-bold">+1</button>
+              <button onClick={() => handleAdjustHP(5)} className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded font-bold">+5</button>
+              <button onClick={() => handleAdjustHP(10)} className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded font-bold">+10</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Combat Stats */}
+      <div className="bg-gray-700 rounded p-6">
+        <h3 className="font-bold text-white text-lg mb-4">Combat Stats</h3>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="bg-gray-800 rounded p-4 text-center">
+            <div className="text-xs text-gray-400 mb-1">Armor Class</div>
+            <div className="text-3xl font-bold text-blue-400">{ship.ac}</div>
+          </div>
+          <div className="bg-gray-800 rounded p-4 text-center">
+            <div className="text-xs text-gray-400 mb-1">Level</div>
+            <div className="text-3xl font-bold text-purple-400">{ship.level}</div>
+          </div>
+          <div className="bg-gray-800 rounded p-4 text-center">
+            <div className="text-xs text-gray-400 mb-1">Movement</div>
+            <div className="text-xl font-bold text-white capitalize">{ship.movement}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Weapons Status */}
+      {ship.weapons_arrays && ship.weapons_arrays.length > 0 && (
+        <div className="bg-gray-700 rounded p-6">
+          <h3 className="font-bold text-white text-lg mb-4">Weapons Systems</h3>
+          <div className="space-y-2">
+            {ship.weapons_arrays.map((array) => (
+              <div key={array.id} className="bg-gray-800 rounded p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-white">{array.array_name}</span>
+                    {array.is_firelinked && (
+                      <span className="text-xs bg-orange-600 px-2 py-0.5 rounded">FIRE-LINKED</span>
+                    )}
+                    {array.maintenance_enabled ? (
+                      <span className="text-xs bg-green-600 px-2 py-0.5 rounded">ONLINE</span>
+                    ) : (
+                      <span className="text-xs bg-red-600 px-2 py-0.5 rounded">OFFLINE</span>
+                    )}
+                  </div>
+                  <div className="text-sm text-gray-400">
+                    {array.weapons?.length || 0} / {array.max_weapons} weapons
+                  </div>
+                </div>
+                {array.weapons && array.weapons.length > 0 && (
+                  <div className="mt-2 text-xs text-gray-400">
+                    {array.weapons.map(w => w.name).join(', ')}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default AdminShipsPanel;

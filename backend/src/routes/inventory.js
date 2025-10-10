@@ -14,7 +14,7 @@ const { calculateArchetypeInventoryBonus } = require('../utils/archetypeAbilitie
 // Calculate total inventory slots used by a character
 async function calculateSlotsUsed(characterId) {
   const result = await pool.query(`
-    SELECT 
+    SELECT
       i.item_name,
       i.quantity,
       COALESCE(g.weight, 1) as item_weight,
@@ -22,6 +22,7 @@ async function calculateSlotsUsed(characterId) {
     FROM inventory i
     LEFT JOIN gear_database g ON LOWER(i.item_name) = LOWER(g.name)
     WHERE i.character_id = $1
+      AND (i.in_use_by_item_id IS NULL OR i.in_use_by_item_id = 0)
   `, [characterId]);
 
   let totalSlots = 0;
@@ -332,6 +333,7 @@ router.post('/give-item/:characterId', authenticateToken, isAdmin, async (req, r
       item: itemName,
       quantity
     });
+    io.emit('admin_refresh'); // Notify admin panel
 
     const newSlots = await calculateSlotsUsed(characterId);
     res.json({ 
@@ -405,6 +407,7 @@ router.delete('/remove-item/:characterId/:itemId', authenticateToken, isAdmin, a
       message: `Item removed: ${item.item_name}`,
       item: item.item_name
     });
+    io.emit('admin_refresh'); // Notify admin panel
 
     const newSlots = await calculateSlotsUsed(characterId);
     const maxSlots = await getMaxSlots(characterId);
@@ -880,6 +883,7 @@ router.post('/equip/:characterId/:itemId', authenticateToken, async (req, res) =
     io.to(`character_${characterId}`).emit('character_updated', {
       message: `Equipped ${itemResult.rows[0].item_name}!`
     });
+    io.emit('admin_refresh'); // Notify admin panel
 
     res.json({
       message: 'Item equipped successfully',
@@ -937,6 +941,7 @@ router.post('/unequip/:characterId/:itemId', authenticateToken, async (req, res)
     io.to(`character_${characterId}`).emit('character_updated', {
       message: `Unequipped ${itemResult.rows[0].item_name}`
     });
+    io.emit('admin_refresh'); // Notify admin panel
 
     res.json({
       message: 'Item unequipped successfully',
@@ -1228,6 +1233,7 @@ router.post('/load-cell/:characterId/:itemId', authenticateToken, async (req, re
     io.to(`character_${characterId}`).emit('character_updated', {
       message: `Energy cell loaded into ${item.item_name}!`
     });
+    io.emit('admin_refresh'); // Notify admin panel
 
     res.json({ message: 'Energy cell loaded successfully' });
 
@@ -1330,6 +1336,7 @@ router.post('/unload-cell/:characterId/:itemId', authenticateToken, async (req, 
     io.to(`character_${characterId}`).emit('character_updated', {
       message: `Energy cell unloaded from ${item.item_name}`
     });
+    io.emit('admin_refresh'); // Notify admin panel
 
     res.json({ message: 'Energy cell unloaded successfully' });
 

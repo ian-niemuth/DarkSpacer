@@ -77,7 +77,17 @@ io.on('connection', (socket) => {
     socket.join(`character_${characterId}`);
     console.log(`Socket ${socket.id} joined character_${characterId}`);
   });
-  
+
+  socket.on('join_ship_room', (shipId) => {
+    socket.join(`ship_${shipId}`);
+    console.log(`Socket ${socket.id} joined ship_${shipId}`);
+  });
+
+  socket.on('leave_ship_room', (shipId) => {
+    socket.leave(`ship_${shipId}`);
+    console.log(`Socket ${socket.id} left ship_${shipId}`);
+  });
+
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
   });

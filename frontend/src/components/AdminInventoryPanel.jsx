@@ -101,51 +101,39 @@ function AdminInventoryPanel({ character, onClose, onUpdate }) {
         { itemName: selectedItem.name, quantity },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      
-      alert(`Gave ${quantity}× ${selectedItem.name} to ${character.name}`);
+
       setSelectedItem(null);
       setQuantity(1);
       fetchCharacterInventory();
       onUpdate();
     } catch (error) {
+      console.error('Failed to give item:', error);
       alert(error.response?.data?.error || 'Failed to give item');
     }
   };
 
-  const handleRemoveItem = async (itemId, itemName, currentQuantity) => {
-    const removeQty = prompt(`How many ${itemName} to remove? (Max: ${currentQuantity})`, '1');
-    if (!removeQty) return;
-
-    const qty = parseInt(removeQty);
-    if (isNaN(qty) || qty < 1 || qty > currentQuantity) {
-      alert('Invalid quantity');
-      return;
-    }
-
+  const handleRemoveItem = async (itemId, itemName, currentQuantity, qty = 1) => {
     try {
       const token = localStorage.getItem('token');
       await axios.delete(
         `${API_URL}/inventory/remove-item/${character.id}/${itemId}`,
-        { 
+        {
           data: { quantity: qty },
-          headers: { Authorization: `Bearer ${token}` } 
+          headers: { Authorization: `Bearer ${token}` }
         }
       );
-      
-      alert(`Removed ${qty}× ${itemName}`);
+
       fetchCharacterInventory();
       onUpdate();
     } catch (error) {
+      console.error('Failed to remove item:', error);
       alert(error.response?.data?.error || 'Failed to remove item');
     }
   };
 
   const handleAddCustomItem = async (e) => {
     e.preventDefault();
-    
-    // DEBUG: Log what we're sending
-    console.log('Sending custom item data:', customItem);
-    
+
     try {
       const token = localStorage.getItem('token');
       await axios.post(
@@ -153,8 +141,7 @@ function AdminInventoryPanel({ character, onClose, onUpdate }) {
         customItem,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      
-      alert(`Custom item "${customItem.name}" added to database`);
+
       setShowCustomForm(false);
       setCustomItem({
         name: '',
@@ -471,8 +458,8 @@ function AdminInventoryPanel({ character, onClose, onUpdate }) {
                           {item.item_name} ×{item.quantity}
                         </div>
                         <div className="text-xs text-gray-300">
-                          Weight: {item.actual_weight === 0 ? 'FREE' : 
-                                   item.actual_weight < 1 ? '0.5 (2 per slot)' : 
+                          Weight: {item.actual_weight === 0 ? 'FREE' :
+                                   item.actual_weight < 1 ? '0.5 (2 per slot)' :
                                    item.actual_weight} slots each
                         </div>
                         {item.damage && (
@@ -486,12 +473,22 @@ function AdminInventoryPanel({ character, onClose, onUpdate }) {
                           </div>
                         )}
                       </div>
-                      <button
-                        onClick={() => handleRemoveItem(item.id, item.item_name, item.quantity)}
-                        className="ml-2 px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded"
-                      >
-                        Remove
-                      </button>
+                      <div className="ml-2 flex flex-col gap-1">
+                        <button
+                          onClick={() => handleRemoveItem(item.id, item.item_name, item.quantity, 1)}
+                          className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded whitespace-nowrap"
+                        >
+                          -1
+                        </button>
+                        {item.quantity > 1 && (
+                          <button
+                            onClick={() => handleRemoveItem(item.id, item.item_name, item.quantity, item.quantity)}
+                            className="px-3 py-1 bg-red-700 hover:bg-red-800 text-white text-xs rounded whitespace-nowrap"
+                          >
+                            -All
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))

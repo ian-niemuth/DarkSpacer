@@ -3,29 +3,59 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { api } from '../config/api';
 import ShipSchematicView from './ship-views/ShipSchematicView';
 import ShipCargoTab from './ShipCargoTab';
-import { API_URL as BASE_API_URL } from '../config/api';
+import { API_URL as BASE_API_URL, WS_URL } from '../config/api';
+import io from 'socket.io-client';
 
 const API_URL = `${BASE_API_URL}/player-ships`;
 
 function PlayerShipView({ user }) {
   const { id } = useParams();
   const navigate = useNavigate();
-  
+
   const [ships, setShips] = useState([]);
   const [selectedShip, setSelectedShip] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'schematic'
+  const [socket, setSocket] = useState(null);
 
   useEffect(() => {
     fetchMyShips();
+
+    // Setup socket.io
+    const newSocket = io(WS_URL);
+    setSocket(newSocket);
+
+    // Listen for ship updates
+    newSocket.on('ship_updated', (data) => {
+      console.log('Ship updated:', data);
+      if (id) {
+        fetchShipDetails(id);
+      }
+      fetchMyShips();
+    });
+
+    return () => {
+      newSocket.disconnect();
+    };
   }, []);
 
   useEffect(() => {
     if (id) {
       fetchShipDetails(id);
+
+      // Join ship-specific room
+      if (socket) {
+        socket.emit('join_ship_room', id);
+      }
     }
-  }, [id]);
+
+    return () => {
+      if (socket && id) {
+        socket.emit('leave_ship_room', id);
+      }
+    };
+  }, [id, socket]);
 
   const fetchMyShips = async () => {
     try {
@@ -305,6 +335,83 @@ function TabButton({ active, onClick, label }) {
 function OverviewTab({ ship }) {
   return (
     <div className="space-y-4">
+      {/* Combat Status - At a Glance */}
+      <div className="bg-gray-700 rounded p-4 border-2 border-purple-600">
+        <h3 className="font-bold text-white text-lg mb-4">⚔️ Combat Status</h3>
+
+        {/* HP and AC */}
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          <div className="bg-gray-800 rounded p-3 text-center">
+            <div className="text-xs text-gray-400">Hit Points</div>
+            <div className="text-2xl font-bold text-red-400">{ship.hp_current}/{ship.hp_max}</div>
+          </div>
+          <div className="bg-gray-800 rounded p-3 text-center">
+            <div className="text-xs text-gray-400">Armor Class</div>
+            <div className="text-2xl font-bold text-blue-400">{ship.ac}</div>
+          </div>
+          <div className="bg-gray-800 rounded p-3 text-center">
+            <div className="text-xs text-gray-400">Movement</div>
+            <div className="text-lg font-bold text-white capitalize">{ship.movement || 'near'}</div>
+          </div>
+        </div>
+
+        {/* Weapons Arrays */}
+        {ship.weapons_arrays && ship.weapons_arrays.length > 0 && (
+          <div className="mb-3">
+            <h4 className="text-sm font-bold text-orange-400 mb-2">Weapons Systems</h4>
+            <div className="space-y-1">
+              {ship.weapons_arrays.map((array) => (
+                <div key={array.id} className="flex items-center justify-between bg-gray-800 rounded px-3 py-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-white">{array.array_name}</span>
+                    {array.is_firelinked && (
+                      <span className="bg-orange-600 px-1.5 py-0.5 rounded text-[10px]">FIRE-LINKED</span>
+                    )}
+                    {array.maintenance_enabled ? (
+                      <span className="bg-green-600 px-1.5 py-0.5 rounded text-[10px]">ONLINE</span>
+                    ) : (
+                      <span className="bg-red-600 px-1.5 py-0.5 rounded text-[10px]">OFFLINE</span>
+                    )}
+                  </div>
+                  <span className="text-gray-400">{array.weapons?.length || 0} weapons</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Armor */}
+        {ship.armor && (
+          <div className="mb-3">
+            <h4 className="text-sm font-bold text-blue-400 mb-2">Armor</h4>
+            <div className="bg-gray-800 rounded px-3 py-2 text-xs">
+              <span className="text-white">{ship.armor.name}</span>
+              <span className="text-gray-400 ml-2">• AC: {ship.armor.ac_bonus || ship.ac}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Components */}
+        {ship.components && ship.components.length > 0 && (
+          <div>
+            <h4 className="text-sm font-bold text-purple-400 mb-2">Systems ({ship.components.length})</h4>
+            <div className="grid grid-cols-2 gap-1">
+              {ship.components.map((component) => (
+                <div key={component.id} className="flex items-center justify-between bg-gray-800 rounded px-2 py-1 text-[10px]">
+                  <span className="text-white truncate">{component.name}</span>
+                  {component.maintenance_enabled ? (
+                    <span className="bg-green-600 px-1 py-0.5 rounded text-[9px]">ON</span>
+                  ) : (
+                    <span className="bg-red-600 px-1 py-0.5 rounded text-[9px]">OFF</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Stats and Details */}
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-gray-700 rounded p-4">
           <h3 className="font-bold text-white mb-2">Stats</h3>
@@ -326,8 +433,8 @@ function OverviewTab({ ship }) {
               <span className="text-white">{ship.owner_name || 'Unknown'}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-400">Movement</span>
-              <span className="text-white">{ship.movement || 'near'}</span>
+              <span className="text-gray-400">Level</span>
+              <span className="text-white">{ship.level || 1}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-400">Purchase Price</span>
@@ -408,21 +515,33 @@ function WeaponsTab({ ship }) {
             {array.is_firelinked && (
               <span className="text-xs bg-orange-600 px-2 py-0.5 rounded">FIRE-LINKED</span>
             )}
+            {!array.maintenance_enabled && (
+              <span className="text-xs bg-red-600 px-2 py-0.5 rounded">OFFLINE</span>
+            )}
           </div>
-          
+
           {array.weapons && array.weapons.length > 0 ? (
             <div className="space-y-2">
               {array.weapons.map((weapon) => {
-                // Handle properties that might be JSON string or object
+                // Parse properties to show clean list of property names
                 let propertiesDisplay = '';
                 if (weapon.properties) {
-                  if (typeof weapon.properties === 'string') {
-                    propertiesDisplay = weapon.properties;
-                  } else if (typeof weapon.properties === 'object') {
-                    propertiesDisplay = JSON.stringify(weapon.properties);
+                  try {
+                    let propsObj = weapon.properties;
+                    if (typeof weapon.properties === 'string') {
+                      propsObj = JSON.parse(weapon.properties);
+                    }
+                    // Extract property keys/names
+                    const propKeys = Object.keys(propsObj);
+                    propertiesDisplay = propKeys.join(', ');
+                  } catch (e) {
+                    // If parsing fails, show as-is
+                    propertiesDisplay = typeof weapon.properties === 'string'
+                      ? weapon.properties
+                      : JSON.stringify(weapon.properties);
                   }
                 }
-                
+
                 return (
                   <div key={weapon.id} className="bg-gray-800 rounded p-3">
                     <div className="font-bold text-white text-sm">{weapon.name}</div>
@@ -432,6 +551,11 @@ function WeaponsTab({ ship }) {
                     {propertiesDisplay && (
                       <div className="text-xs text-blue-300 mt-1">
                         {propertiesDisplay}
+                      </div>
+                    )}
+                    {weapon.requires_ammo && (
+                      <div className={`text-xs mt-1 ${weapon.ammo_loaded ? 'text-green-400' : 'text-yellow-400'}`}>
+                        {weapon.ammo_loaded ? '✓ Ammo Loaded' : '⚠ No Ammo'}
                       </div>
                     )}
                   </div>

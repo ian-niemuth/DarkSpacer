@@ -279,6 +279,7 @@ router.post('/equip/:characterId/:itemId', authenticateToken, async (req, res) =
       message: `Equipped ${item.item_name}`,
       ac: acData.ac
     });
+    io.emit('admin_refresh'); // Notify admin panel
 
     res.json({
       message: 'Item equipped successfully',
@@ -345,6 +346,7 @@ router.post('/unequip/:characterId/:itemId', authenticateToken, async (req, res)
       message: `Unequipped ${item.item_name}`,
       ac: acData.ac
     });
+    io.emit('admin_refresh'); // Notify admin panel
 
     res.json({
       message: 'Item unequipped successfully',

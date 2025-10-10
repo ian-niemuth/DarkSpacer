@@ -157,6 +157,9 @@ function CharacterSheet() {
     newSocket.on('inventory_updated', (data) => {
       setNotification(data.message);
       fetchCharacter();
+      fetchPoweredGear(); // Explicitly refresh powered gear
+      fetchEquippedGear(); // Explicitly refresh equipped gear
+      fetchAvailableCells(); // Explicitly refresh available cells
       setTimeout(() => setNotification(''), 5000);
     });
     

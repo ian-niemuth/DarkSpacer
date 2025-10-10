@@ -306,6 +306,21 @@ export function WeaponsTab({ ship, weaponTemplates, onUpdate, showSuccess, showE
     }
   };
 
+  const handleToggleArrayMaintenance = async (arrayId, enabled) => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.put(`${API_URL}/${ship.id}/weapons-arrays/${arrayId}/maintenance`, {
+        maintenance_enabled: enabled
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      onUpdate();
+      showSuccess(enabled ? 'Weapons array enabled' : 'Weapons array disabled');
+    } catch (error) {
+      showError('Failed to toggle weapons array');
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -329,12 +344,25 @@ export function WeaponsTab({ ship, weaponTemplates, onUpdate, showSuccess, showE
                     {array.is_firelinked && (
                       <span className="text-xs bg-orange-600 px-2 py-0.5 rounded">FIRE-LINKED</span>
                     )}
+                    {!array.maintenance_enabled && (
+                      <span className="text-xs bg-red-600 px-2 py-0.5 rounded">DISABLED</span>
+                    )}
                   </div>
                   <div className="text-xs text-gray-400 mt-1">
                     Weapons: {array.weapons?.length || 0} / {array.max_weapons}
                   </div>
                 </div>
                 <div className="flex gap-2">
+                  <button
+                    onClick={() => handleToggleArrayMaintenance(array.id, !array.maintenance_enabled)}
+                    className={`text-xs px-3 py-1 rounded ${
+                      array.maintenance_enabled
+                        ? 'bg-yellow-600 hover:bg-yellow-700'
+                        : 'bg-green-600 hover:bg-green-700'
+                    } text-white`}
+                  >
+                    {array.maintenance_enabled ? 'Disable' : 'Enable'}
+                  </button>
                   <button
                     onClick={() => {
                       setSelectedArray(array);

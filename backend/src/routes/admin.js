@@ -15,7 +15,46 @@ router.get('/characters', async (req, res) => {
        JOIN users u ON c.user_id = u.id
        ORDER BY u.username, c.name`
     );
-    res.json(result.rows);
+
+    // For each character, get their equipped gear AND powered gear status
+    const charactersWithGear = await Promise.all(
+      result.rows.map(async (char) => {
+        const equippedResult = await pool.query(
+          `SELECT i.id, item_name, equipped_slot, damage, range, properties, loaded_energy_cell_id
+           FROM inventory i
+           WHERE character_id = $1 AND equipped = true
+           ORDER BY
+             CASE equipped_slot
+               WHEN 'primary_weapon' THEN 1
+               WHEN 'secondary_weapon' THEN 2
+               WHEN 'body_armor' THEN 3
+               ELSE 4
+             END`,
+          [char.id]
+        );
+
+        // Get all powered gear (EC items) - both equipped and unequipped
+        const poweredGearResult = await pool.query(
+          `SELECT i.id, i.item_name, i.equipped, i.equipped_slot, i.loaded_energy_cell_id,
+                  g.properties
+           FROM inventory i
+           LEFT JOIN gear_database g ON LOWER(i.item_name) = LOWER(g.name)
+           WHERE i.character_id = $1
+             AND g.properties LIKE '%EC%'
+             AND LOWER(i.item_name) NOT LIKE '%energy cell%'
+           ORDER BY i.equipped DESC, i.item_name`,
+          [char.id]
+        );
+
+        return {
+          ...char,
+          equipped_gear: equippedResult.rows,
+          powered_gear: poweredGearResult.rows
+        };
+      })
+    );
+
+    res.json(charactersWithGear);
   } catch (error) {
     console.error('Error fetching all characters:', error);
     res.status(500).json({ error: 'Failed to fetch characters' });
@@ -47,15 +86,16 @@ router.post('/characters/:id/credits', async (req, res) => {
     );
     
     const character = result.rows[0];
-    
+
     const io = req.app.get('io');
     io.to(`character_${id}`).emit('character_updated', {
       characterId: id,
       credits: character.credits,
-      message: amount > 0 
+      message: amount > 0
         ? `You received ${amount} credits! ${reason || ''}`
         : `You lost ${Math.abs(amount)} credits. ${reason || ''}`
     });
+    io.emit('admin_refresh'); // Notify admin panel
     
     res.json({
       message: 'Credits updated',
@@ -102,6 +142,7 @@ router.post('/characters/:id/damage', async (req, res) => {
       hp_current: character.hp_current,
       message: `You took ${damage} damage! ${character.hp_current <= 0 ? 'You are down!' : ''}`
     });
+    io.emit('admin_refresh'); // Notify admin panel
     
     res.json({
       message: 'Damage applied',
@@ -148,6 +189,7 @@ router.post('/characters/:id/heal', async (req, res) => {
       hp_current: character.hp_current,
       message: `You were healed for ${healing} HP!`
     });
+    io.emit('admin_refresh'); // Notify admin panel
     
     res.json({
       message: 'Healing applied',
@@ -187,6 +229,7 @@ router.post('/characters/:id/give-item', async (req, res) => {
       item: result.rows[0],
       message: `You received: ${item_name}!`
     });
+    io.emit('admin_refresh'); // Notify admin panel
     
     res.json({
       message: 'Item given to character',
@@ -290,6 +333,7 @@ router.post('/characters/:id/xp', async (req, res) => {
       xp: character.xp,
       message: `You gained ${xp} XP! ${reason || ''}`
     });
+    io.emit('admin_refresh'); // Notify admin panel
     
     res.json({
       message: 'XP awarded',
@@ -512,6 +556,65 @@ router.delete('/ships/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting ship:', error);
     res.status(500).json({ error: 'Failed to delete ship' });
+  }
+});
+
+// DELETE energy cell from equipped gear (expend cell)
+router.delete('/characters/:characterId/energy-cell/:itemId', async (req, res) => {
+  try {
+    const { characterId, itemId } = req.params;
+
+    // Get the item with loaded cell
+    const itemResult = await pool.query(
+      'SELECT * FROM inventory WHERE id = $1 AND character_id = $2',
+      [itemId, characterId]
+    );
+
+    if (itemResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    const item = itemResult.rows[0];
+
+    if (!item.loaded_energy_cell_id) {
+      return res.status(400).json({ error: 'No energy cell loaded in this item' });
+    }
+
+    const cellId = item.loaded_energy_cell_id;
+
+    // IMPORTANT: Clear the loaded_energy_cell_id reference FIRST (before deleting)
+    await pool.query(
+      'UPDATE inventory SET loaded_energy_cell_id = NULL WHERE id = $1',
+      [itemId]
+    );
+
+    // Now delete the energy cell from inventory
+    await pool.query('DELETE FROM inventory WHERE id = $1', [cellId]);
+
+    // Log activity
+    await pool.query(
+      `INSERT INTO activity_log (character_id, action_type, description, admin_user_id)
+       VALUES ($1, 'energy_cell_expended', $2, $3)`,
+      [characterId, `Energy cell expended from ${item.item_name}`, req.user.userId]
+    );
+
+    // Emit socket events
+    const io = req.app.get('io');
+    io.to(`character_${characterId}`).emit('character_updated', {
+      message: `Energy cell expended from ${item.item_name}`
+    });
+    io.to(`character_${characterId}`).emit('inventory_updated', {
+      message: `Energy cell expended from ${item.item_name}`
+    });
+    io.emit('admin_refresh'); // Notify admin panel
+
+    res.json({
+      message: 'Energy cell expended successfully',
+      itemName: item.item_name
+    });
+  } catch (error) {
+    console.error('Error expending energy cell:', error);
+    res.status(500).json({ error: 'Failed to expend energy cell' });
   }
 });
 

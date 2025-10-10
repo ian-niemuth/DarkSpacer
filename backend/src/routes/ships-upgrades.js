@@ -78,6 +78,66 @@ router.post('/:id/upgrade-stat', async (req, res) => {
 });
 
 // ============================================
+// HP UPGRADES
+// ============================================
+
+// POST upgrade ship HP
+router.post('/:id/upgrade-hp', async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const { id } = req.params;
+    const { increase } = req.body; // number of +1s
+
+    await client.query('BEGIN');
+
+    // Get ship with owner
+    const shipResult = await client.query(`
+      SELECT s.*, c.credits as owner_credits, c.id as owner_character_id
+      FROM ships s
+      LEFT JOIN characters c ON s.owner_type = 'character' AND s.owner_id = c.id
+      WHERE s.id = $1
+    `, [id]);
+
+    if (shipResult.rows.length === 0) {
+      throw new Error('Ship not found');
+    }
+
+    const ship = shipResult.rows[0];
+
+    // Calculate cost (1000cr per +1) - for DM reference
+    const totalCost = increase * 1000;
+
+    // Calculate new HP max
+    const currentHPMax = ship.hp_max;
+    const newHPMax = currentHPMax + increase;
+
+    // Update ship HP max and also increase current HP by the same amount
+    await client.query(`
+      UPDATE ships
+      SET hp_max = $1, hp_current = hp_current + $2, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3
+    `, [newHPMax, increase, id]);
+
+    // NOTE: DM must manually deduct credits from owner
+
+    await client.query('COMMIT');
+
+    res.json({
+      message: `Successfully upgraded HP from ${currentHPMax} to ${newHPMax}`,
+      cost: totalCost,
+      new_hp_max: newHPMax
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error upgrading HP:', error);
+    res.status(500).json({ error: error.message || 'Failed to upgrade HP' });
+  } finally {
+    client.release();
+  }
+});
+
+// ============================================
 // SLOT PURCHASES
 // ============================================
 
@@ -166,6 +226,10 @@ router.get('/:id/upgrade-info', async (req, res) => {
     const ship = shipResult.rows[0];
     
     const upgradeInfo = {
+      hp: {
+        current_max: ship.hp_max,
+        cost_per_point: 1000
+      },
       stats: {
         strength: { current: ship.strength, max: 18, cost_per_point: 1000 },
         dexterity: { current: ship.dexterity, max: 18, cost_per_point: 1000 },
@@ -175,7 +239,7 @@ router.get('/:id/upgrade-info', async (req, res) => {
         charisma: { current: ship.charisma, max: 18, cost_per_point: 1000 }
       },
       slots: {
-        system: { 
+        system: {
           current_max: ship.system_slots_max,
           max_allowed: 10,
           cost: 1000
