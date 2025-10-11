@@ -109,17 +109,20 @@ router.get('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
-  
+
   console.log('DELETE route hit for character ID:', id);
-  
+
   try {
-    // Just delete - no auth check for now
+    // Delete activity log entries first (foreign key constraint)
+    await pool.query('DELETE FROM activity_log WHERE character_id = $1', [id]);
+
+    // Now delete the character
     const result = await pool.query('DELETE FROM characters WHERE id = $1 RETURNING *', [id]);
-    
+
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Character not found' });
     }
-    
+
     console.log('Character deleted successfully:', id);
     res.json({ message: 'Character deleted successfully' });
 

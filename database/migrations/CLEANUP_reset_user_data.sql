@@ -84,6 +84,13 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Delete all activity logs (must be before characters due to foreign key)
+DO $$ BEGIN
+  IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'activity_log') THEN
+    DELETE FROM activity_log;
+  END IF;
+END $$;
+
 -- Delete all characters
 DO $$ BEGIN
   IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'characters') THEN
@@ -133,6 +140,9 @@ DO $$ BEGIN
   END IF;
   IF EXISTS (SELECT FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'comms_messages_id_seq') THEN
     ALTER SEQUENCE comms_messages_id_seq RESTART WITH 1;
+  END IF;
+  IF EXISTS (SELECT FROM pg_sequences WHERE schemaname = 'public' AND sequencename = 'activity_log_id_seq') THEN
+    ALTER SEQUENCE activity_log_id_seq RESTART WITH 1;
   END IF;
 END $$;
 
