@@ -17,7 +17,7 @@ async function calculateSlotsUsed(characterId) {
     SELECT
       i.item_name,
       i.quantity,
-      COALESCE(g.weight, 1) as item_weight,
+      COALESCE(g.weight, i.weight, 1) as item_weight,
       g.properties
     FROM inventory i
     LEFT JOIN gear_database g ON LOWER(i.item_name) = LOWER(g.name)
@@ -1414,11 +1414,21 @@ router.post('/gift-item/:characterId/:itemId', authenticateToken, async (req, re
       return res.status(400).json({ error: 'Cannot gift items to yourself' });
     }
 
-    // Verify ownership of sender character
-    const senderCheck = await pool.query(
-      'SELECT * FROM characters WHERE id = $1 AND user_id = $2',
-      [characterId, req.user.userId]
-    );
+    // Verify ownership of sender character (admins can gift from any character)
+    let senderQuery;
+    let senderParams;
+
+    if (req.user.isAdmin) {
+      // Admins can gift from any character
+      senderQuery = 'SELECT * FROM characters WHERE id = $1';
+      senderParams = [characterId];
+    } else {
+      // Regular users can only gift from their own characters
+      senderQuery = 'SELECT * FROM characters WHERE id = $1 AND user_id = $2';
+      senderParams = [characterId, req.user.userId];
+    }
+
+    const senderCheck = await pool.query(senderQuery, senderParams);
 
     if (senderCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Character not found or not owned by you' });
@@ -1586,6 +1596,7 @@ router.post('/gift-item/:characterId/:itemId', authenticateToken, async (req, re
       io.to(`character_${recipientId}`).emit('inventory_updated', {
         message: `Received ${transferQty}× ${item.item_name} from ${sender.name}`
       });
+      io.emit('admin_refresh'); // Notify admin panel
 
       res.json({
         message: `Successfully gifted ${transferQty}× ${item.item_name} to ${recipient.name}`
@@ -1684,6 +1695,7 @@ router.delete('/discard/:characterId/:itemId', authenticateToken, async (req, re
     io.to(`character_${characterId}`).emit('inventory_updated', {
       message: `Discarded ${discardQty}× ${item.item_name}`
     });
+    io.emit('admin_refresh'); // Notify admin panel
 
     res.json({
       message: `Successfully discarded ${discardQty}× ${item.item_name}`,

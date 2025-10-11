@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
+const { calculateArchetypeInventoryBonus } = require('../utils/archetypeAbilities');
 
 router.use(authenticateToken);
 
@@ -15,12 +16,12 @@ router.use(authenticateToken);
  */
 async function isCrewMember(shipId, userId) {
   const result = await pool.query(`
-    SELECT sca.* 
+    SELECT sca.*
     FROM ship_crew_assignments sca
     JOIN characters c ON sca.character_id = c.id
     WHERE sca.ship_id = $1 AND c.user_id = $2
   `, [shipId, userId]);
-  
+
   return result.rows.length > 0;
 }
 
@@ -33,9 +34,72 @@ async function calculateCargoUsed(shipId) {
     FROM ship_inventory
     WHERE ship_id = $1
   `, [shipId]);
-  
+
   // Use parseFloat for decimal weights, then round to 2 decimal places
   return Math.round(parseFloat(result.rows[0].total_weight) * 100) / 100;
+}
+
+/**
+ * Calculate current inventory slots used for a character
+ */
+async function calculateSlotsUsed(characterId) {
+  const result = await pool.query(`
+    SELECT
+      i.item_name,
+      i.quantity,
+      COALESCE(g.weight, i.weight, 1) as item_weight
+    FROM inventory i
+    LEFT JOIN gear_database g ON LOWER(i.item_name) = LOWER(g.name)
+    WHERE i.character_id = $1
+      AND (i.in_use_by_item_id IS NULL OR i.in_use_by_item_id = 0)
+  `, [characterId]);
+
+  let totalSlots = 0;
+  let hasBackpack = false;
+
+  for (const item of result.rows) {
+    const weight = parseFloat(item.item_weight);
+    const quantity = item.quantity;
+
+    // Check for FREE items (weight = 0)
+    if (weight === 0) {
+      if (item.item_name.toLowerCase().includes('backpack')) {
+        if (!hasBackpack) {
+          hasBackpack = true;
+          continue; // First backpack is free
+        }
+      } else {
+        continue; // Other FREE items
+      }
+    }
+
+    // Check for "2 per slot" items (weight = 0.5)
+    if (weight === 0.5) {
+      totalSlots += Math.ceil(quantity / 2);
+    } else {
+      totalSlots += weight * quantity;
+    }
+  }
+
+  return totalSlots;
+}
+
+/**
+ * Get character's max inventory slots
+ */
+async function getMaxSlots(characterId) {
+  const result = await pool.query(
+    'SELECT strength, constitution, archetype FROM characters WHERE id = $1',
+    [characterId]
+  );
+
+  if (result.rows.length === 0) return 10;
+
+  const { strength, constitution, archetype } = result.rows[0];
+  const baseSlots = strength;
+  const archetypeBonus = calculateArchetypeInventoryBonus(archetype, strength, constitution);
+
+  return Math.max(10, baseSlots + archetypeBonus);
 }
 
 // ============================================
@@ -293,18 +357,54 @@ router.post('/:shipId/cargo/unload', async (req, res) => {
     
     const cargoItem = cargoResult.rows[0];
     const transferQty = quantity || cargoItem.quantity;
-    
+
     if (transferQty > cargoItem.quantity) {
       throw new Error('Cannot unload more than available');
     }
-    
+
     // Get ship
     const shipResult = await client.query(
       'SELECT * FROM ships WHERE id = $1',
       [shipId]
     );
     const ship = shipResult.rows[0];
-    
+
+    // Check character inventory capacity
+    const itemWeight = parseFloat(cargoItem.weight) || 0;
+    let slotsNeeded = 0;
+
+    if (itemWeight === 0) {
+      // FREE items
+      slotsNeeded = 0;
+    } else if (itemWeight === 0.5) {
+      // "2 per slot" items
+      slotsNeeded = Math.ceil(transferQty / 2);
+    } else {
+      // Standard items
+      slotsNeeded = itemWeight * transferQty;
+    }
+
+    const currentSlots = await calculateSlotsUsed(characterId);
+    const maxSlots = await getMaxSlots(characterId);
+    const availableSlots = maxSlots - currentSlots;
+
+    console.log('Cargo unload inventory check:', {
+      characterId,
+      itemName: cargoItem.item_name,
+      transferQty,
+      itemWeight,
+      slotsNeeded,
+      currentSlots,
+      maxSlots,
+      availableSlots
+    });
+
+    if (slotsNeeded > availableSlots) {
+      throw new Error(
+        `Not enough inventory space. Character has ${currentSlots}/${maxSlots} slots used. Needs ${slotsNeeded} more slots.`
+      );
+    }
+
     // Check if item already exists in character inventory
     const existingResult = await client.query(
       'SELECT * FROM inventory WHERE character_id = $1 AND item_name = $2',

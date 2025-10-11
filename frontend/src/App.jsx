@@ -12,13 +12,17 @@ import PlayerShipView from './components/PlayerShipView';
 import ShipCatalog from './components/ShipCatalog';
 import GearCatalog from './components/GearCatalog';
 import CommsCenter from './components/CommsCenter';
-import Datapad from './components/Datapad';
+import Communicator from './components/Communicator';
+import BugReportModal from './components/BugReportModal';
+import BugReportsPanel from './components/BugReportsPanel';
+import RegistrationCodesPanel from './components/RegistrationCodesPanel';
 
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dmUnreadMessages, setDmUnreadMessages] = useState(0);
+  const [showBugReport, setShowBugReport] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -178,7 +182,23 @@ function App() {
                         >
                           🎲 DM Panel
                         </Link>
+                        {user.isSuperAdmin && (
+                          <Link
+                            to="/admin/registration-codes"
+                            className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded font-bold text-sm"
+                          >
+                            🔑 Reg Codes
+                          </Link>
+                        )}
                       </>
+                    )}
+                    {!user.isAdmin && (
+                      <button
+                        onClick={() => setShowBugReport(true)}
+                        className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded text-sm font-bold"
+                      >
+                        🐛 Report Bug
+                      </button>
                     )}
                     <button
                       onClick={handleLogout}
@@ -256,9 +276,30 @@ function App() {
                         >
                           🎲 DM Panel
                         </Link>
+                        {user.isSuperAdmin && (
+                          <Link
+                            to="/admin/registration-codes"
+                            onClick={closeMobileMenu}
+                            className="block px-3 py-3 rounded-md text-base font-medium bg-yellow-600 text-white hover:bg-yellow-700"
+                          >
+                            🔑 Registration Codes
+                          </Link>
+                        )}
                       </>
                     )}
-                    
+
+                    {!user.isAdmin && (
+                      <button
+                        onClick={() => {
+                          setShowBugReport(true);
+                          closeMobileMenu();
+                        }}
+                        className="w-full text-left px-3 py-3 rounded-md text-base font-medium text-white bg-orange-600 hover:bg-orange-700 mt-2"
+                      >
+                        🐛 Report Bug
+                      </button>
+                    )}
+
                     <button
                       onClick={handleLogout}
                       className="w-full text-left px-3 py-3 rounded-md text-base font-medium text-white bg-red-600 hover:bg-red-700 mt-2"
@@ -349,12 +390,39 @@ function App() {
           />
 
           <Route
-            path="/datapad/:characterId"
+            path="/communicator/:characterId"
             element={
-              user ? <Datapad user={user} /> : <Navigate to="/login" />
+              user ? <Communicator user={user} /> : <Navigate to="/login" />
+            }
+          />
+
+          <Route
+            path="/admin/bug-reports"
+            element={
+              user && user.isAdmin ? (
+                <BugReportsPanel />
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
+
+          <Route
+            path="/admin/registration-codes"
+            element={
+              user && user.isSuperAdmin ? (
+                <RegistrationCodesPanel />
+              ) : (
+                <Navigate to="/" />
+              )
             }
           />
         </Routes>
+
+        {/* Bug Report Modal */}
+        {showBugReport && (
+          <BugReportModal onClose={() => setShowBugReport(false)} />
+        )}
       </div>
     </BrowserRouter>
   );

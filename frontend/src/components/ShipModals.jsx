@@ -534,6 +534,173 @@ export function CrewTab({ ship, onUpdate, showSuccess, showError }) {
 }
 
 // ============================================
+// ENHANCEMENTS TAB
+// ============================================
+export function EnhancementsTab({ ship, enhancementTemplates, onUpdate, showSuccess, showError }) {
+  const [showInstallModal, setShowInstallModal] = useState(false);
+
+  const handleInstallEnhancement = async (templateId) => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(`${API_URL}/${ship.id}/enhancements`, {
+        enhancement_template_id: templateId
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setShowInstallModal(false);
+      onUpdate();
+      showSuccess('Enhancement installed');
+    } catch (error) {
+      showError(error.response?.data?.error || 'Failed to install enhancement');
+    }
+  };
+
+  const handleRemoveEnhancement = async (enhancementId, enhancementName) => {
+    if (!confirm(`Remove ${enhancementName}?`)) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`${API_URL}/${ship.id}/enhancements/${enhancementId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      onUpdate();
+      showSuccess('Enhancement removed');
+    } catch (error) {
+      showError('Failed to remove enhancement');
+    }
+  };
+
+  const handleToggleEnhancement = async (enhancementId, isActive) => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.put(`${API_URL}/${ship.id}/enhancements/${enhancementId}/toggle`, {
+        is_active: isActive
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      onUpdate();
+      showSuccess(isActive ? 'Enhancement activated' : 'Enhancement deactivated');
+    } catch (error) {
+      showError('Failed to toggle enhancement');
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-bold text-white">Installed Enhancements</h3>
+        <button
+          onClick={() => setShowInstallModal(true)}
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-bold"
+        >
+          ➕ Install Enhancement
+        </button>
+      </div>
+
+      {ship.enhancements && ship.enhancements.length > 0 ? (
+        <div className="space-y-2">
+          {ship.enhancements.map((enhancement) => (
+            <div key={enhancement.id} className="bg-gray-700 rounded p-4">
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-white">{enhancement.name}</span>
+                    <span className="text-xs bg-blue-600 px-2 py-0.5 rounded">
+                      {enhancement.enhancement_type.toUpperCase()}
+                    </span>
+                    {!enhancement.is_active && (
+                      <span className="text-xs bg-red-600 px-2 py-0.5 rounded">INACTIVE</span>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-300 mt-2">{enhancement.description}</p>
+                  {enhancement.benefit && (
+                    <div className="text-sm text-green-400 mt-2">
+                      <span className="font-bold">Benefit:</span> {enhancement.benefit}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1 ml-4">
+                  <button
+                    onClick={() => handleToggleEnhancement(enhancement.id, !enhancement.is_active)}
+                    className={`text-xs px-3 py-1 rounded ${
+                      enhancement.is_active
+                        ? 'bg-yellow-600 hover:bg-yellow-700'
+                        : 'bg-green-600 hover:bg-green-700'
+                    } text-white`}
+                  >
+                    {enhancement.is_active ? 'Deactivate' : 'Activate'}
+                  </button>
+                  <button
+                    onClick={() => handleRemoveEnhancement(enhancement.id, enhancement.name)}
+                    className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-gray-400 text-center py-8">
+          No enhancements installed. Add one to improve your ship!
+        </div>
+      )}
+
+      {/* Install Enhancement Modal */}
+      {showInstallModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto border border-gray-700">
+            <h3 className="text-xl font-bold text-white mb-4">Install Enhancement</h3>
+            <div className="space-y-2 mb-4">
+              {enhancementTemplates.map((template) => (
+                <button
+                  key={template.id}
+                  onClick={() => handleInstallEnhancement(template.id)}
+                  className="w-full text-left p-4 rounded bg-gray-700 hover:bg-gray-600 transition"
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white">{template.name}</span>
+                        <span className="text-xs bg-blue-600 px-2 py-0.5 rounded">
+                          {template.enhancement_type.toUpperCase()}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-300 mt-1">{template.description}</p>
+                      {template.benefit && (
+                        <div className="text-sm text-green-400 mt-2">
+                          <span className="font-bold">Benefit:</span> {template.benefit}
+                        </div>
+                      )}
+                      <div className="text-xs text-gray-400 mt-2">
+                        Cost: {template.cost || 'N/A'}cr
+                        {template.properties && template.properties.maintenance_cost && (
+                          <span className="ml-2">• Maintenance: {template.properties.maintenance_cost}cr</span>
+                        )}
+                        <span className="ml-2 text-yellow-400">
+                          • Uses {template.slots_required} {template.enhancement_type} slot(s)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowInstallModal(false)}
+              className="w-full bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================
 // CREATE SHIP MODAL
 // ============================================
 export function CreateShipModal({ onClose, onSuccess, showError }) {

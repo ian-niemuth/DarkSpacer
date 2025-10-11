@@ -124,56 +124,50 @@ function PlayerShipView({ user }) {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Ship List Sidebar */}
-        <div className="lg:col-span-1">
-          <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-            <h2 className="text-lg font-bold text-white mb-4">Available Ships</h2>
-            <div className="space-y-2">
-              {ships.map((ship) => (
-                <Link
-                  key={ship.id}
-                  to={`/ships/${ship.id}`}
-                  className={`block p-3 rounded transition-colors ${
-                    selectedShip?.id === ship.id
-                      ? 'bg-purple-600'
-                      : 'bg-gray-700 hover:bg-gray-600'
-                  }`}
-                >
-                  <div className="font-bold text-white">{ship.name}</div>
-                  <div className="text-xs text-gray-400 mt-1">
-                    {ship.owner_name}
-                  </div>
-                  {ship.crew_role && (
-                    <div className="text-xs text-blue-300 mt-1">
-                      {ship.crew_role}
-                    </div>
-                  )}
-                </Link>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Ship Details */}
-        <div className="lg:col-span-3">
-          {!selectedShip ? (
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-              <p className="text-gray-400">Select a ship to view details</p>
-            </div>
-          ) : (
-            <ShipDetails
-              ship={selectedShip}
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-              viewMode={viewMode}
-              setViewMode={setViewMode}
-              user={user}
-              onRefresh={() => fetchShipDetails(selectedShip.id)}
-            />
-          )}
+      {/* Ship List - Horizontal */}
+      <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 mb-6">
+        <h2 className="text-lg font-bold text-white mb-3">Available Ships ({ships.length})</h2>
+        <div className="flex gap-3 overflow-x-auto scrollbar-thin pb-2" style={{ scrollbarWidth: 'thin', scrollbarColor: '#4B5563 #1F2937' }}>
+          {ships.map((ship) => (
+            <Link
+              key={ship.id}
+              to={`/ships/${ship.id}`}
+              className={`flex-shrink-0 p-3 rounded transition-colors min-w-[200px] ${
+                selectedShip?.id === ship.id
+                  ? 'bg-purple-600'
+                  : 'bg-gray-700 hover:bg-gray-600'
+              }`}
+            >
+              <div className="font-bold text-white">{ship.name}</div>
+              <div className="text-xs text-gray-400 mt-1">
+                {ship.owner_name}
+              </div>
+              {ship.crew_role && (
+                <div className="text-xs text-blue-300 mt-1">
+                  {ship.crew_role}
+                </div>
+              )}
+            </Link>
+          ))}
         </div>
       </div>
+
+      {/* Ship Details - Full Width */}
+      {!selectedShip ? (
+        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+          <p className="text-gray-400">Select a ship to view details</p>
+        </div>
+      ) : (
+        <ShipDetails
+          ship={selectedShip}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+          user={user}
+          onRefresh={() => fetchShipDetails(selectedShip.id)}
+        />
+      )}
     </div>
   );
 }
@@ -284,11 +278,18 @@ function ShipDetails({ ship, activeTab, setActiveTab, viewMode, setViewMode, use
       ) : (
         /* Tabs - List View */
         <div className="bg-gray-800 rounded-lg border border-gray-700">
-          <div className="flex border-b border-gray-700 overflow-x-auto">
+          <div
+            className="flex border-b border-gray-700 overflow-x-auto scrollbar-thin"
+            style={{
+              scrollbarWidth: 'thin',
+              scrollbarColor: '#4B5563 #1F2937'
+            }}
+          >
             <TabButton active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} label="📊 Overview" />
             <TabButton active={activeTab === 'components'} onClick={() => setActiveTab('components')} label={`🔧 Components (${ship.components?.length || 0})`} />
             <TabButton active={activeTab === 'weapons'} onClick={() => setActiveTab('weapons')} label={`⚔️ Weapons (${ship.weapons_arrays?.length || 0})`} />
             <TabButton active={activeTab === 'armor'} onClick={() => setActiveTab('armor')} label="🛡️ Armor" />
+            <TabButton active={activeTab === 'enhancements'} onClick={() => setActiveTab('enhancements')} label={`✨ Enhancements (${ship.enhancements?.length || 0})`} />
             <TabButton active={activeTab === 'crew'} onClick={() => setActiveTab('crew')} label={`👥 Crew (${ship.crew?.length || 0})`} />
             <TabButton active={activeTab === 'cargo'} onClick={() => setActiveTab('cargo')} label="📦 Cargo" />
           </div>
@@ -298,6 +299,7 @@ function ShipDetails({ ship, activeTab, setActiveTab, viewMode, setViewMode, use
             {activeTab === 'components' && <ComponentsTab ship={ship} />}
             {activeTab === 'weapons' && <WeaponsTab ship={ship} />}
             {activeTab === 'armor' && <ArmorTab ship={ship} />}
+            {activeTab === 'enhancements' && <EnhancementsTab ship={ship} />}
             {activeTab === 'crew' && <CrewTab ship={ship} />}
             {activeTab === 'cargo' && (
               <ShipCargoTab 
@@ -393,7 +395,7 @@ function OverviewTab({ ship }) {
 
         {/* Components */}
         {ship.components && ship.components.length > 0 && (
-          <div>
+          <div className="mb-3">
             <h4 className="text-sm font-bold text-purple-400 mb-2">Systems ({ship.components.length})</h4>
             <div className="grid grid-cols-2 gap-1">
               {ship.components.map((component) => (
@@ -403,6 +405,25 @@ function OverviewTab({ ship }) {
                     <span className="bg-green-600 px-1 py-0.5 rounded text-[9px]">ON</span>
                   ) : (
                     <span className="bg-red-600 px-1 py-0.5 rounded text-[9px]">OFF</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Enhancements */}
+        {ship.enhancements && ship.enhancements.length > 0 && (
+          <div>
+            <h4 className="text-sm font-bold text-indigo-400 mb-2">Enhancements ({ship.enhancements.length})</h4>
+            <div className="grid grid-cols-2 gap-1">
+              {ship.enhancements.map((enhancement) => (
+                <div key={enhancement.id} className="flex items-center justify-between bg-gray-800 rounded px-2 py-1 text-[10px]">
+                  <span className="text-white truncate">{enhancement.name}</span>
+                  {enhancement.is_active ? (
+                    <span className="bg-green-600 px-1 py-0.5 rounded text-[9px]">ON</span>
+                  ) : (
+                    <span className="bg-gray-600 px-1 py-0.5 rounded text-[9px]">OFF</span>
                   )}
                 </div>
               ))}
@@ -636,6 +657,42 @@ function ArmorTab({ ship }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Enhancements Tab
+function EnhancementsTab({ ship }) {
+  if (!ship.enhancements || ship.enhancements.length === 0) {
+    return <div className="text-gray-400 text-center py-8">No enhancements installed</div>;
+  }
+
+  return (
+    <div className="space-y-2">
+      {ship.enhancements.map((enhancement) => (
+        <div key={enhancement.id} className="bg-gray-700 rounded p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="font-bold text-white">{enhancement.name}</span>
+            <span className="text-xs bg-blue-600 px-2 py-0.5 rounded">
+              {enhancement.enhancement_type.toUpperCase()}
+            </span>
+            {!enhancement.is_active && (
+              <span className="text-xs bg-red-600 px-2 py-0.5 rounded">INACTIVE</span>
+            )}
+            {enhancement.is_active && (
+              <span className="text-xs bg-green-600 px-2 py-0.5 rounded">ACTIVE</span>
+            )}
+          </div>
+          {enhancement.description && (
+            <p className="text-sm text-gray-400 mb-2">{enhancement.description}</p>
+          )}
+          {enhancement.benefit && (
+            <div className="text-sm text-green-400">
+              <span className="font-bold">Benefit:</span> {enhancement.benefit}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

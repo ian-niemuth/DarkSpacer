@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '../config/api';
 
 function Login({ onLogin }) {
@@ -6,33 +6,65 @@ function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
+  const [registrationCode, setRegistrationCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Debug: Log when error changes
+  useEffect(() => {
+    if (error) {
+      console.log('Error set to:', error);
+    }
+  }, [error]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+
+    // Don't clear error before submit - let it persist until we get a response
     setLoading(true);
 
     try {
       const endpoint = isRegistering ? '/auth/register' : '/auth/login';
       const data = isRegistering
-        ? { username, password, email }
+        ? { username, password, email, registrationCode }
         : { username, password };
 
       const response = await api.post(endpoint, data);
 
       if (isRegistering) {
+        setLoading(false);
         setIsRegistering(false);
         setPassword('');
         setError('Registration successful! Please log in.');
       } else {
+        // Clear error on successful login
+        setError('');
         onLogin(response.data.token, response.data.user);
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'An error occurred');
-    } finally {
+      console.log('Login error caught:', err.response?.data?.error);
+      const errorMessage = err.response?.data?.error || 'An error occurred';
+      // Update both states together
       setLoading(false);
+      setError(errorMessage);
+      console.log('Error and loading state updated');
+    }
+  };
+
+  // Clear error only when user types, not during form submission
+  const handleUsernameChange = (e) => {
+    setUsername(e.target.value);
+    // Clear error when user corrects their input
+    if (error && !error.includes('successful') && !loading) {
+      setError('');
+    }
+  };
+
+  const handlePasswordChange = (e) => {
+    setPassword(e.target.value);
+    // Clear error when user corrects their input
+    if (error && !error.includes('successful') && !loading) {
+      setError('');
     }
   };
 
@@ -61,24 +93,40 @@ function Login({ onLogin }) {
                 className="appearance-none rounded relative block w-full px-4 py-3 border border-gray-600 placeholder-gray-500 text-white bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
                 placeholder="Username"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={handleUsernameChange}
               />
             </div>
 
             {isRegistering && (
-              <div>
-                <label htmlFor="email" className="sr-only">
-                  Email
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  className="appearance-none rounded relative block w-full px-4 py-3 border border-gray-600 placeholder-gray-500 text-white bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
-                  placeholder="Email (optional)"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
+              <>
+                <div>
+                  <label htmlFor="email" className="sr-only">
+                    Email
+                  </label>
+                  <input
+                    id="email"
+                    type="email"
+                    className="appearance-none rounded relative block w-full px-4 py-3 border border-gray-600 placeholder-gray-500 text-white bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
+                    placeholder="Email (optional)"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="registrationCode" className="sr-only">
+                    Registration Code
+                  </label>
+                  <input
+                    id="registrationCode"
+                    type="text"
+                    required
+                    className="appearance-none rounded relative block w-full px-4 py-3 border border-gray-600 placeholder-gray-500 text-white bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base uppercase"
+                    placeholder="Registration Code"
+                    value={registrationCode}
+                    onChange={(e) => setRegistrationCode(e.target.value.toUpperCase())}
+                  />
+                </div>
+              </>
             )}
 
             <div>
@@ -92,14 +140,18 @@ function Login({ onLogin }) {
                 className="appearance-none rounded relative block w-full px-4 py-3 border border-gray-600 placeholder-gray-500 text-white bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
                 placeholder="Password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={handlePasswordChange}
               />
             </div>
           </div>
 
           {error && (
-            <div className={`text-sm sm:text-base ${error.includes('successful') ? 'text-green-400' : 'text-red-400'}`}>
-              {error}
+            <div className={`px-4 py-3 rounded-lg text-sm sm:text-base font-semibold ${
+              error.includes('successful')
+                ? 'bg-green-600 bg-opacity-20 border border-green-600 text-green-400'
+                : 'bg-red-600 bg-opacity-20 border border-red-600 text-red-400'
+            }`}>
+              {error.includes('successful') ? '✅ ' : '❌ '}{error}
             </div>
           )}
 

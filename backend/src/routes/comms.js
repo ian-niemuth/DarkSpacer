@@ -7,6 +7,73 @@ const { authenticateToken } = require('../middleware/auth');
 router.use(authenticateToken);
 
 // ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+/**
+ * Check if a character has a powered communicator
+ * @param {number} characterId - Character ID to check
+ * @returns {Object} { powered: boolean, reason: string }
+ */
+async function checkCommunicatorPower(characterId) {
+  try {
+    // Check if character has a Communicator item
+    const commResult = await pool.query(`
+      SELECT
+        i.*,
+        cell.id as cell_id,
+        cell.item_name as cell_name
+      FROM inventory i
+      LEFT JOIN inventory cell ON i.loaded_energy_cell_id = cell.id
+      WHERE i.character_id = $1
+        AND LOWER(i.item_name) = 'communicator'
+    `, [characterId]);
+
+    if (commResult.rows.length === 0) {
+      return { powered: false, reason: 'NO_COMMUNICATOR' };
+    }
+
+    const communicator = commResult.rows[0];
+
+    // Check if it has an energy cell loaded
+    if (!communicator.loaded_energy_cell_id) {
+      return { powered: false, reason: 'NO_POWER' };
+    }
+
+    return { powered: true, reason: null };
+  } catch (error) {
+    console.error('Error checking communicator power:', error);
+    return { powered: false, reason: 'ERROR' };
+  }
+}
+
+// ============================================
+// GET communicator power status
+// ============================================
+router.get('/power-status/:characterId', async (req, res) => {
+  try {
+    const { characterId } = req.params;
+
+    // Verify character belongs to user (unless admin)
+    if (!req.user.isAdmin) {
+      const charCheck = await pool.query(
+        'SELECT id FROM characters WHERE id = $1 AND user_id = $2',
+        [characterId, req.user.userId]
+      );
+      if (charCheck.rows.length === 0) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
+
+    const powerStatus = await checkCommunicatorPower(characterId);
+    res.json(powerStatus);
+  } catch (error) {
+    console.error('Error checking power status:', error);
+    res.status(500).json({ error: 'Failed to check power status' });
+  }
+});
+
+// ============================================
 // GET messages for a character
 // ============================================
 router.get('/inbox/:characterId', async (req, res) => {
@@ -169,6 +236,18 @@ router.post('/send', async (req, res) => {
         return res.status(403).json({ error: 'Cannot send as this character' });
       }
       sender_id = req.body.sender_id;
+
+      // Check if sender has powered communicator
+      const senderPower = await checkCommunicatorPower(sender_id);
+      if (!senderPower.powered) {
+        return res.status(403).json({
+          error: 'COMMUNICATOR_OFFLINE',
+          reason: senderPower.reason,
+          message: senderPower.reason === 'NO_COMMUNICATOR'
+            ? 'No communicator found in inventory'
+            : 'Communicator has no power. Load an energy cell first.'
+        });
+      }
     }
 
     // DM can send as anyone (npc, system, etc.)

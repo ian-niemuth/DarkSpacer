@@ -40,8 +40,12 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Clear local storage and redirect to login
+    // Don't redirect to login if we're already on the login/register endpoints
+    const isAuthEndpoint = error.config?.url?.includes('/auth/login') ||
+                          error.config?.url?.includes('/auth/register');
+
+    if (error.response?.status === 401 && !isAuthEndpoint) {
+      // Clear local storage and redirect to login (only for expired tokens, not failed login)
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.href = '/login';

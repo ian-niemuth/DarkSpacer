@@ -3,9 +3,60 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
+const { calculateArchetypeInventoryBonus } = require('../utils/archetypeAbilities');
 
 router.use(authenticateToken);
 router.use(isAdmin);
+
+// Helper function: Calculate current inventory slots used for a character
+async function calculateSlotsUsed(characterId) {
+  const result = await pool.query(`
+    SELECT
+      i.item_name,
+      i.quantity,
+      COALESCE(g.weight, i.weight, 1) as item_weight
+    FROM inventory i
+    LEFT JOIN gear_database g ON LOWER(i.item_name) = LOWER(g.name)
+    WHERE i.character_id = $1
+      AND (i.in_use_by_item_id IS NULL OR i.in_use_by_item_id = 0)
+  `, [characterId]);
+
+  let totalSlots = 0;
+  let hasBackpack = false;
+
+  for (const item of result.rows) {
+    const weight = parseFloat(item.item_weight);
+    const quantity = item.quantity;
+
+    // Check for FREE items (weight = 0)
+    if (weight === 0) {
+      if (item.item_name.toLowerCase().includes('backpack')) {
+        if (!hasBackpack) {
+          hasBackpack = true;
+          continue; // First backpack is free
+        }
+      } else {
+        continue; // Other FREE items
+      }
+    }
+
+    // Check for "2 per slot" items (weight = 0.5)
+    if (weight === 0.5) {
+      totalSlots += Math.ceil(quantity / 2);
+    } else {
+      totalSlots += weight * quantity;
+    }
+  }
+
+  return totalSlots;
+}
+
+// Helper function: Get character's max inventory slots
+function getMaxSlots(strength, constitution, archetype) {
+  const baseSlots = strength;
+  const archetypeBonus = calculateArchetypeInventoryBonus(archetype, strength, constitution);
+  return Math.max(10, baseSlots + archetypeBonus);
+}
 
 router.get('/characters', async (req, res) => {
   try {
@@ -16,7 +67,7 @@ router.get('/characters', async (req, res) => {
        ORDER BY u.username, c.name`
     );
 
-    // For each character, get their equipped gear AND powered gear status
+    // For each character, get their equipped gear, powered gear status, and inventory slots
     const charactersWithGear = await Promise.all(
       result.rows.map(async (char) => {
         const equippedResult = await pool.query(
@@ -46,10 +97,16 @@ router.get('/characters', async (req, res) => {
           [char.id]
         );
 
+        // Calculate inventory slots
+        const slots_used = await calculateSlotsUsed(char.id);
+        const slots_max = getMaxSlots(char.strength, char.constitution, char.archetype);
+
         return {
           ...char,
           equipped_gear: equippedResult.rows,
-          powered_gear: poweredGearResult.rows
+          powered_gear: poweredGearResult.rows,
+          slots_used,
+          slots_max
         };
       })
     );

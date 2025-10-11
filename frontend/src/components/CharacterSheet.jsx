@@ -118,6 +118,7 @@ function CharacterSheet() {
 
   const [showHPAdjust, setShowHPAdjust] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [communicatorPowered, setCommunicatorPowered] = useState(null); // null = loading, true/false = status
 
   // Play notification sound (3 pings)
   const playNotificationSound = () => {
@@ -145,6 +146,17 @@ function CharacterSheet() {
     }
   };
 
+  // Check communicator power status
+  const checkCommunicatorPower = async () => {
+    try {
+      const response = await api.get(`${API_URL}/comms/power-status/${id}`);
+      setCommunicatorPowered(response.data.powered);
+    } catch (error) {
+      console.error('Error checking communicator power:', error);
+      setCommunicatorPowered(false);
+    }
+  };
+
   // Join ship rooms when ships change
   useEffect(() => {
     if (socket && ships.length > 0) {
@@ -164,6 +176,7 @@ function CharacterSheet() {
     fetchCharacter();
     fetchPartyMembers();
     fetchUnreadCount();
+    checkCommunicatorPower();
 
     const newSocket = io(WS_URL);
     setSocket(newSocket);
@@ -182,6 +195,7 @@ function CharacterSheet() {
     newSocket.on('item_received', (data) => {
       setNotification(data.message);
       fetchCharacter();
+      checkCommunicatorPower();
       setTimeout(() => setNotification(''), 5000);
     });
     
@@ -387,6 +401,7 @@ function CharacterSheet() {
       fetchCharacter();
       fetchPoweredGear();
       fetchAvailableCells();
+      checkCommunicatorPower();
     } catch (error) {
       console.error('Error loading cell:', error);
       setEquipError(error.response?.data?.error || 'Failed to load energy cell');
@@ -404,6 +419,7 @@ function CharacterSheet() {
       fetchCharacter();
       fetchPoweredGear();
       fetchAvailableCells();
+      checkCommunicatorPower();
     } catch (error) {
       console.error('Error unloading cell:', error);
       setEquipError(error.response?.data?.error || 'Failed to unload energy cell');
@@ -754,17 +770,33 @@ function CharacterSheet() {
           ← Back to Dashboard
         </Link>
 
-        <Link
-          to={`/datapad/${id}`}
-          className="relative bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"
-        >
-          📡 Datapad
-          {unreadMessages > 0 && (
-            <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center animate-pulse">
-              {unreadMessages}
-            </span>
-          )}
-        </Link>
+        {communicatorPowered ? (
+          <Link
+            to={`/communicator/${id}`}
+            className="relative bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"
+          >
+            📡 Communicator
+            {unreadMessages > 0 && (
+              <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center animate-pulse">
+                {unreadMessages}
+              </span>
+            )}
+          </Link>
+        ) : (
+          <div className="relative group">
+            <button
+              disabled
+              className="bg-gray-600 text-gray-400 px-4 py-2 rounded-lg font-bold flex items-center gap-2 cursor-not-allowed opacity-60"
+            >
+              📡 Communicator ⚠️
+            </button>
+            <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block bg-gray-800 text-white text-xs rounded-lg py-2 px-3 whitespace-nowrap z-10 border border-red-500">
+              <div className="font-bold text-red-400 mb-1">⚠️ OFFLINE</div>
+              <div>Requires: Communicator + Energy Cell</div>
+              <div className="absolute top-full right-4 w-0 h-0 border-l-4 border-l-transparent border-r-4 border-r-transparent border-t-4 border-t-red-500"></div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Character Header - Enhanced with HP, AC, and Ability Scores */}
@@ -1427,20 +1459,21 @@ function CharacterSheet() {
             ) : (
               <>
                 {/* Group items by category */}
-                {['weapon', 'armor', 'gear', 'consumable'].map(category => {
+                {['weapon', 'armor', 'gear', 'consumable', 'salvage'].map(category => {
                   const items = character.inventory.filter(
                     item => item.item_type?.toLowerCase() === category
                   );
-                  
+
                   if (items.length === 0) return null;
-                  
+
                   return (
                     <div key={category} className="mb-4">
                       <h3 className="text-sm font-bold text-blue-300 uppercase mb-2 border-b border-gray-600 pb-1">
                         {category === 'weapon' ? '⚔️ Weapons' :
                          category === 'armor' ? '🛡️ Armor' :
                          category === 'gear' ? '🔧 Gear' :
-                         '💊 Consumables'}
+                         category === 'consumable' ? '💊 Consumables' :
+                         '🔧 Salvage'}
                       </h3>
                       <div className="space-y-2">
                         {items.map((item) => {

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { ComponentsTab, WeaponsTab } from './ShipTabs';
-import { ArmorTab, CrewTab, CreateShipModal, UpgradesTab } from './ShipModals';
+import { ArmorTab, CrewTab, CreateShipModal, UpgradesTab, EnhancementsTab } from './ShipModals';
 import ShipCargoTab from './ShipCargoTab';
 import { API_URL as BASE_API_URL } from '../config/api';
 
@@ -148,6 +148,40 @@ function AdminShipsPanel() {
         </p>
       </div>
 
+      {/* Ship List - Horizontal */}
+      <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 mb-6">
+        <h2 className="text-xl font-bold text-white mb-3">All Ships ({ships.length})</h2>
+        {ships.length === 0 ? (
+          <p className="text-gray-400">No ships yet. Create one to get started!</p>
+        ) : (
+          <div className="flex gap-3 overflow-x-auto scrollbar-thin pb-2" style={{ scrollbarWidth: 'thin', scrollbarColor: '#4B5563 #1F2937' }}>
+            {ships.map((ship) => (
+              <button
+                key={ship.id}
+                onClick={() => handleSelectShip(ship)}
+                className={`flex-shrink-0 text-left p-3 rounded transition-colors min-w-[220px] ${
+                  selectedShip?.id === ship.id
+                    ? 'bg-purple-600'
+                    : 'bg-gray-700 hover:bg-gray-600'
+                }`}
+              >
+                <div className="font-bold text-white">{ship.name}</div>
+                <div className="text-xs text-gray-400 mt-1">
+                  {ship.ship_class} • {ship.owner_name}
+                </div>
+                <div className="text-xs text-gray-400 mt-1">
+                  HP: {ship.hp_current}/{ship.hp_max} • AC: {ship.ac}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  Slots: S {ship.system_slots_used}/{ship.system_slots_max} •
+                  F {ship.feature_slots_used}/{ship.feature_slots_max}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {actionResult && (
         <div className={`mb-4 px-6 py-3 rounded-lg ${
           actionResult.startsWith('✅') ? 'bg-green-600' : 'bg-red-600'
@@ -156,69 +190,29 @@ function AdminShipsPanel() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column - Ships List */}
-        <div className="lg:col-span-1">
-          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-            <h2 className="text-xl font-bold text-white mb-4">All Ships ({ships.length})</h2>
-            <div className="space-y-2 max-h-[700px] overflow-y-auto">
-              {ships.length === 0 ? (
-                <p className="text-gray-400">No ships yet. Create one to get started!</p>
-              ) : (
-                ships.map((ship) => (
-                  <button
-                    key={ship.id}
-                    onClick={() => handleSelectShip(ship)}
-                    className={`w-full text-left p-3 rounded transition-colors ${
-                      selectedShip?.id === ship.id
-                        ? 'bg-purple-600'
-                        : 'bg-gray-700 hover:bg-gray-600'
-                    }`}
-                  >
-                    <div className="font-bold text-white">{ship.name}</div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      {ship.ship_class} • {ship.owner_name}
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      HP: {ship.hp_current}/{ship.hp_max} • AC: {ship.ac}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      Slots: S {ship.system_slots_used}/{ship.system_slots_max} • 
-                      F {ship.feature_slots_used}/{ship.feature_slots_max}
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
+      {/* Ship Details - Full Width */}
+      {!selectedShip ? (
+        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+          <p className="text-gray-400">Select a ship to view details and manage components</p>
         </div>
-
-        {/* Right Column - Ship Details */}
-        <div className="lg:col-span-2">
-          {!selectedShip ? (
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-              <p className="text-gray-400">Select a ship to view details and manage components</p>
-            </div>
-          ) : (
-            <ShipDetailView 
-              ship={selectedShip}
-              componentTemplates={componentTemplates}
-              weaponTemplates={weaponTemplates}
-              armorTemplates={armorTemplates}
-              enhancementTemplates={enhancementTemplates}
-              onUpdate={() => {
-                fetchShipDetails(selectedShip.id);
-                fetchShips();
-              }}
-              showSuccess={showSuccess}
-              showError={showError}
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-              onDelete={() => handleDeleteShip(selectedShip.id, selectedShip.name)}
-            />
-          )}
-        </div>
-      </div>
+      ) : (
+        <ShipDetailView
+          ship={selectedShip}
+          componentTemplates={componentTemplates}
+          weaponTemplates={weaponTemplates}
+          armorTemplates={armorTemplates}
+          enhancementTemplates={enhancementTemplates}
+          onUpdate={() => {
+            fetchShipDetails(selectedShip.id);
+            fetchShips();
+          }}
+          showSuccess={showSuccess}
+          showError={showError}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          onDelete={() => handleDeleteShip(selectedShip.id, selectedShip.name)}
+        />
+      )}
 
       {/* Create Ship Modal */}
       {showCreateModal && (
@@ -326,7 +320,13 @@ function ShipDetailView({
 
       {/* Tab Navigation */}
       <div className="bg-gray-800 rounded-lg border border-gray-700">
-        <div className="flex border-b border-gray-700 overflow-x-auto">
+        <div
+          className="flex border-b border-gray-700 overflow-x-auto scrollbar-thin"
+          style={{
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#4B5563 #1F2937'
+          }}
+        >
           <button
             onClick={() => setActiveTab('overview')}
             className={`px-6 py-3 font-bold whitespace-nowrap ${
@@ -388,8 +388,18 @@ function ShipDetailView({
             👥 Crew ({ship.crew?.length || 0})
           </button>
           <button
+            onClick={() => setActiveTab('enhancements')}
+            className={`px-6 py-3 font-bold whitespace-nowrap ${
+              activeTab === 'enhancements'
+                ? 'bg-gray-700 text-white border-b-2 border-purple-500'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            ✨ Enhancements ({ship.enhancements?.length || 0})
+          </button>
+          <button
             onClick={() => setActiveTab('upgrades')}
-            className={`px-6 py-3 font-bold ${
+            className={`px-6 py-3 font-bold whitespace-nowrap ${
               activeTab === 'upgrades'
                 ? 'bg-gray-700 text-white border-b-2 border-purple-500'
                 : 'text-gray-400 hover:text-white'
@@ -399,7 +409,7 @@ function ShipDetailView({
           </button>
           <button
             onClick={() => setActiveTab('cargo')}
-            className={`px-6 py-3 font-bold ${
+            className={`px-6 py-3 font-bold whitespace-nowrap ${
               activeTab === 'cargo'
                 ? 'bg-gray-700 text-white border-b-2 border-purple-500'
                 : 'text-gray-400 hover:text-white'
@@ -449,15 +459,24 @@ function ShipDetailView({
             />
           )}
           {activeTab === 'crew' && (
-            <CrewTab 
+            <CrewTab
               ship={ship}
               onUpdate={onUpdate}
               showSuccess={showSuccess}
               showError={showError}
             />
           )}
+          {activeTab === 'enhancements' && (
+            <EnhancementsTab
+              ship={ship}
+              enhancementTemplates={enhancementTemplates}
+              onUpdate={onUpdate}
+              showSuccess={showSuccess}
+              showError={showError}
+            />
+          )}
           {activeTab === 'upgrades' && (
-            <UpgradesTab 
+            <UpgradesTab
               ship={ship}
               onUpdate={onUpdate}
               showSuccess={showSuccess}

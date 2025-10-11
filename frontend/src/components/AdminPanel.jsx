@@ -6,6 +6,7 @@ import { io } from 'socket.io-client';
 import AdminInventoryPanel from './AdminInventoryPanel';
 import CustomItemsManager from './CustomItemsManager';
 import GMXPAward from './GMXPAward';
+import SalvageManager from './SalvageManager';
 
 function AdminPanel() {
   const [characters, setCharacters] = useState([]);
@@ -14,7 +15,7 @@ function AdminPanel() {
   const [actionResult, setActionResult] = useState('');
   const [showInventoryManager, setShowInventoryManager] = useState(false);
   const [inventoryCharacter, setInventoryCharacter] = useState(null);
-  const [activeTab, setActiveTab] = useState('combat'); // 'combat', 'custom-items', or 'xp-awards'
+  const [activeTab, setActiveTab] = useState('combat'); // 'combat', 'custom-items', 'xp-awards', or 'salvage'
   const [showQuickAction, setShowQuickAction] = useState(null); // { characterId, type: 'credits' | 'xp' }
   const [quickActionAmount, setQuickActionAmount] = useState('');
   const [quickActionNote, setQuickActionNote] = useState('');
@@ -246,11 +247,27 @@ function AdminPanel() {
           >
             ⭐ XP Awards
           </button>
+          <button
+            onClick={() => setActiveTab('salvage')}
+            className={`px-6 py-3 font-bold transition ${
+              activeTab === 'salvage'
+                ? 'bg-gray-700 text-white border-b-2 border-blue-500'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            🔧 Salvage
+          </button>
           <Link
             to="/admin/ships"
             className="px-6 py-3 font-bold transition text-gray-400 hover:text-white hover:bg-gray-700"
           >
             🚀 Manage Ships
+          </Link>
+          <Link
+            to="/admin/bug-reports"
+            className="px-6 py-3 font-bold transition text-gray-400 hover:text-white hover:bg-gray-700"
+          >
+            🐛 Bug Reports
           </Link>
         </div>
       </div>
@@ -269,6 +286,11 @@ function AdminPanel() {
       {/* XP Awards Tab */}
       {activeTab === 'xp-awards' && (
         <GMXPAward />
+      )}
+
+      {/* Salvage Tab */}
+      {activeTab === 'salvage' && (
+        <SalvageManager />
       )}
 
       {/* Combat Reference Tab */}
@@ -432,6 +454,34 @@ function AdminPanel() {
                         <div className="text-xs text-gray-300">{getMod(char.charisma)}</div>
                       </div>
                     </div>
+
+                    {/* Inventory Space Bar */}
+                    {char.slots_used !== undefined && char.slots_max !== undefined && (
+                      <div className="mb-3">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-xs font-bold text-gray-400">INVENTORY</span>
+                          <span className="text-xs font-bold text-indigo-400">
+                            {char.slots_used} / {char.slots_max} slots
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-700 rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full transition-all duration-300 ${
+                              char.slots_used > char.slots_max
+                                ? 'bg-red-500'
+                                : char.slots_used === char.slots_max
+                                ? 'bg-yellow-500'
+                                : char.slots_used / char.slots_max > 0.75
+                                ? 'bg-orange-500'
+                                : 'bg-indigo-500'
+                            }`}
+                            style={{
+                              width: `${Math.min(100, (char.slots_used / char.slots_max) * 100)}%`
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Equipped Gear */}
                     {char.equipped_gear && char.equipped_gear.length > 0 && (

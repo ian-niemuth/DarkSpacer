@@ -1,10 +1,13 @@
 // Security middleware for production
 const rateLimit = require('express-rate-limit');
 
+// Check if we're in development mode
+const isDevelopment = process.env.NODE_ENV !== 'production';
+
 // Rate limiting for login attempts
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // 10 attempts (friends might typo!)
+  max: isDevelopment ? 100 : 10, // 100 in dev, 10 in production
   message: 'Too many login attempts, please try again in 15 minutes.',
   standardHeaders: true,
   legacyHeaders: false,
