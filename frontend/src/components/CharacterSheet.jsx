@@ -117,6 +117,33 @@ function CharacterSheet() {
   const [recipientSearch, setRecipientSearch] = useState('');
 
   const [showHPAdjust, setShowHPAdjust] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+
+  // Play notification sound (3 pings)
+  const playNotificationSound = () => {
+    try {
+      const playPing = (count) => {
+        if (count >= 3) return;
+        const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSiKzPDTgjMGHm7A7+OZUBMOX6Lt8bFjGwU7k9n0zn4qBSh+yO/aiTgIG2m98OScTgwOUqjj8bllHAY+mtvy0IEsBS19yPDajjgIG2e88OOXTxAOT6Pi8bVkHAU7k9jyz34qBSh+yO/aiTgIG2m98OScTgwOUqjj8bllHAY+mtvy0IEsBS19yPDajjgIG2i98OOYTw==');
+        audio.volume = 0.3;
+        audio.play().catch(e => console.log('Could not play sound:', e));
+        setTimeout(() => playPing(count + 1), 200); // 200ms delay between pings
+      };
+      playPing(0);
+    } catch (error) {
+      console.log('Sound notification failed:', error);
+    }
+  };
+
+  // Fetch unread message count
+  const fetchUnreadCount = async () => {
+    try {
+      const response = await api.get(`${API_URL}/comms/unread-count/${id}`);
+      setUnreadMessages(response.data.unread_count);
+    } catch (error) {
+      console.error('Error fetching unread count:', error);
+    }
+  };
 
   // Join ship rooms when ships change
   useEffect(() => {
@@ -136,7 +163,8 @@ function CharacterSheet() {
   useEffect(() => {
     fetchCharacter();
     fetchPartyMembers();
-    
+    fetchUnreadCount();
+
     const newSocket = io(WS_URL);
     setSocket(newSocket);
     
@@ -187,6 +215,26 @@ function CharacterSheet() {
     newSocket.on('ship_updated', (data) => {
       // Ship updated - refresh ships list
       fetchShips();
+    });
+
+    newSocket.on('new_message', (data) => {
+      console.log('[CharacterSheet] New message received:', data);
+      // Only play sound if message is relevant to this character
+      const isFromMe = data.sender_type === 'character' && data.sender_id === parseInt(id);
+      const isForMe = (
+        data.recipient_type === 'character' && data.recipient_id === parseInt(id)
+      ) || (
+        data.recipient_type === 'all'
+      ) || (
+        data.recipient_type === 'party'
+      );
+
+      // Play sound only if message is FOR this character and NOT from this character
+      if (!isFromMe && isForMe) {
+        playNotificationSound();
+      }
+      // New message received - refresh unread count
+      fetchUnreadCount();
     });
 
     return () => {
@@ -701,9 +749,23 @@ function CharacterSheet() {
         </div>
       )}
 
-      <Link to="/" className="text-blue-400 hover:text-blue-300 mb-3 sm:mb-4 inline-block text-base sm:text-sm min-h-[44px] sm:min-h-0 flex items-center">
-        ← Back to Dashboard
-      </Link>
+      <div className="flex justify-between items-center mb-3 sm:mb-4">
+        <Link to="/" className="text-blue-400 hover:text-blue-300 inline-block text-base sm:text-sm min-h-[44px] sm:min-h-0 flex items-center">
+          ← Back to Dashboard
+        </Link>
+
+        <Link
+          to={`/datapad/${id}`}
+          className="relative bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"
+        >
+          📡 Datapad
+          {unreadMessages > 0 && (
+            <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center animate-pulse">
+              {unreadMessages}
+            </span>
+          )}
+        </Link>
+      </div>
 
       {/* Character Header - Enhanced with HP, AC, and Ability Scores */}
       <div className="bg-gray-800 rounded-lg mb-4 sm:mb-6 border border-gray-700">

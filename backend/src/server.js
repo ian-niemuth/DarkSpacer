@@ -22,6 +22,7 @@ const shipCargoRoutes = require('./routes/shipCargo');
 const playerShipsRoutes = require('./routes/player-ships');
 const advancementRoutes = require('./routes/advancement');
 const abilitiesRoutes = require('./routes/abilities');
+const commsRoutes = require('./routes/comms');
 // const spaceRoutes = require('./routes/space'); // DEPRECATED - Will be refactored later
 
 const app = express();
@@ -64,6 +65,7 @@ app.use('/api/ships', shipCargoRoutes);
 app.use('/api/player-ships', playerShipsRoutes);
 app.use('/api/advancement', advancementRoutes);
 app.use('/api/abilities', abilitiesRoutes);
+app.use('/api/comms', commsRoutes);
 // app.use('/api/space', spaceRoutes); // DEPRECATED - Will be refactored later
 
 app.get('/api/health', (req, res) => {

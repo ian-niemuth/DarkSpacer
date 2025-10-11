@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
+import axios from 'axios';
+import { io } from 'socket.io-client';
+import { API_URL, WS_URL } from './config/api';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import CharacterSheet from './components/CharacterSheet';
@@ -8,22 +11,71 @@ import AdminShipsPanel from './components/AdminShipsPanel';
 import PlayerShipView from './components/PlayerShipView';
 import ShipCatalog from './components/ShipCatalog';
 import GearCatalog from './components/GearCatalog';
+import CommsCenter from './components/CommsCenter';
+import Datapad from './components/Datapad';
 
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [dmUnreadMessages, setDmUnreadMessages] = useState(0);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
     const userData = localStorage.getItem('user');
-    
+
     if (token && userData) {
       setUser(JSON.parse(userData));
     }
-    
+
     setLoading(false);
   }, []);
+
+  // Fetch DM unread count and setup socket for admins
+  useEffect(() => {
+    if (!user || !user.isAdmin) return;
+
+    const fetchDmUnreadCount = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await axios.get(`${API_URL}/comms/admin/unread-count`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        console.log('[App] DM unread count:', response.data.unread_count);
+        setDmUnreadMessages(response.data.unread_count);
+      } catch (error) {
+        console.error('Error fetching DM unread count:', error);
+      }
+    };
+
+    fetchDmUnreadCount();
+
+    // Setup socket to listen for new player messages
+    const socket = io(WS_URL);
+
+    socket.on('connect', () => {
+      console.log('[App] DM Socket connected');
+    });
+
+    socket.on('new_message', (msg) => {
+      console.log('[App] New message event received:', msg);
+      // Update count for any message (player or DM reply) to keep it accurate
+      fetchDmUnreadCount();
+    });
+
+    // Listen for custom event when DM reads a message
+    const handleDmMessageRead = () => {
+      console.log('[App] DM message read event received, refreshing count');
+      fetchDmUnreadCount();
+    };
+
+    window.addEventListener('dm-message-read', handleDmMessageRead);
+
+    return () => {
+      socket.disconnect();
+      window.removeEventListener('dm-message-read', handleDmMessageRead);
+    };
+  }, [user]);
 
   const handleLogin = (token, userData) => {
     localStorage.setItem('token', token);
@@ -108,12 +160,25 @@ function App() {
                       )}
                     </span>
                     {user.isAdmin && (
-                      <Link
-                        to="/admin"
-                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-bold text-sm"
-                      >
-                        🎲 DM Panel
-                      </Link>
+                      <>
+                        <Link
+                          to="/comms"
+                          className="relative bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold text-sm"
+                        >
+                          📡 Comms
+                          {dmUnreadMessages > 0 && (
+                            <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center animate-pulse">
+                              {dmUnreadMessages}
+                            </span>
+                          )}
+                        </Link>
+                        <Link
+                          to="/admin"
+                          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-bold text-sm"
+                        >
+                          🎲 DM Panel
+                        </Link>
+                      </>
                     )}
                     <button
                       onClick={handleLogout}
@@ -171,13 +236,27 @@ function App() {
                     </Link>
 
                     {user.isAdmin && (
-                      <Link
-                        to="/admin"
-                        onClick={closeMobileMenu}
-                        className="block px-3 py-3 rounded-md text-base font-medium bg-red-600 text-white hover:bg-red-700 mt-2"
-                      >
-                        🎲 DM Panel
-                      </Link>
+                      <>
+                        <Link
+                          to="/comms"
+                          onClick={closeMobileMenu}
+                          className="relative block px-3 py-3 rounded-md text-base font-medium bg-green-600 text-white hover:bg-green-700 mt-2"
+                        >
+                          📡 Comms Center
+                          {dmUnreadMessages > 0 && (
+                            <span className="absolute top-2 right-2 bg-red-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center animate-pulse">
+                              {dmUnreadMessages}
+                            </span>
+                          )}
+                        </Link>
+                        <Link
+                          to="/admin"
+                          onClick={closeMobileMenu}
+                          className="block px-3 py-3 rounded-md text-base font-medium bg-red-600 text-white hover:bg-red-700"
+                        >
+                          🎲 DM Panel
+                        </Link>
+                      </>
                     )}
                     
                     <button
@@ -255,6 +334,24 @@ function App() {
             path="/catalog/gear"
             element={
               user ? <GearCatalog user={user} /> : <Navigate to="/login" />
+            }
+          />
+
+          <Route
+            path="/comms"
+            element={
+              user && user.isAdmin ? (
+                <CommsCenter user={user} />
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
+
+          <Route
+            path="/datapad/:characterId"
+            element={
+              user ? <Datapad user={user} /> : <Navigate to="/login" />
             }
           />
         </Routes>
