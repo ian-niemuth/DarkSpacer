@@ -783,10 +783,18 @@ function CreateCharacterModal({ onClose, onCreated }) {
     }
   }, [formData.archetype]);
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto z-50">
-      <div className="bg-gray-800 rounded-lg p-6 max-w-5xl w-full my-8 max-h-[90vh] overflow-y-auto">
-        <h2 className="text-2xl font-bold text-white mb-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2 sm:p-4 z-50">
+      <div className="bg-gray-800 rounded-lg p-4 sm:p-6 max-w-5xl w-full my-4 sm:my-8 max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+        <h2 className="text-xl sm:text-2xl font-bold text-white mb-3 sm:mb-4">
           Create New Spacer {step === 2 && '- Roll Talents'}
         </h2>
         
@@ -995,19 +1003,19 @@ function CreateCharacterModal({ onClose, onCreated }) {
 
                 {/* Stats */}
                 <div>
-                  <div className="flex justify-between items-center mb-2">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 sm:gap-0 mb-2">
                     <label className="text-sm font-medium text-gray-300">
                       Ability Scores *
                     </label>
                     <div className="flex items-center gap-3">
-                      <span className="text-sm text-gray-400">
+                      <span className="text-xs sm:text-sm text-gray-400">
                         Rolls remaining: {statRollsRemaining}/5
                       </span>
                       <button
                         type="button"
                         onClick={handleRollStats}
                         disabled={statRollsRemaining <= 0}
-                        className={`px-4 py-1 rounded text-sm font-bold ${
+                        className={`px-4 py-2 sm:py-1 rounded text-sm font-bold min-h-[44px] sm:min-h-0 ${
                           statRollsRemaining > 0
                             ? 'bg-purple-600 hover:bg-purple-700 text-white'
                             : 'bg-gray-600 text-gray-400 cursor-not-allowed'
@@ -1080,18 +1088,18 @@ function CreateCharacterModal({ onClose, onCreated }) {
                 </div>
               </div>
 
-              <div className="flex space-x-4 mt-6">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mt-6">
                 <button
                   type="button"
                   onClick={() => setStep(2)}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded font-bold"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 sm:py-2 rounded font-bold min-h-[44px] sm:min-h-0 order-1"
                 >
                   Next: Roll Talents
                 </button>
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 rounded"
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-3 sm:py-2 rounded min-h-[44px] sm:min-h-0 order-2"
                 >
                   Cancel
                 </button>
@@ -1109,12 +1117,12 @@ function CreateCharacterModal({ onClose, onCreated }) {
                 </div>
 
                 {!talentsRolled ? (
-                  <div className="text-center py-12">
-                    <p className="text-gray-300 mb-6">Ready to discover your talents?</p>
+                  <div className="text-center py-8 sm:py-12">
+                    <p className="text-sm sm:text-base text-gray-300 mb-4 sm:mb-6">Ready to discover your talents?</p>
                     <button
                       type="button"
                       onClick={handleRollTalents}
-                      className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-4 rounded-lg font-bold text-xl shadow-lg transform hover:scale-105 transition"
+                      className="bg-purple-600 hover:bg-purple-700 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-lg font-bold text-lg sm:text-xl shadow-lg transform hover:scale-105 transition min-h-[56px]"
                     >
                       Roll Talents (2d6 × 2)
                     </button>
@@ -1301,18 +1309,18 @@ function CreateCharacterModal({ onClose, onCreated }) {
 
               {error && <div className="text-red-400 text-sm mt-4">{error}</div>}
 
-              <div className="flex space-x-4 mt-6">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mt-6">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 rounded"
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-3 sm:py-2 rounded min-h-[44px] sm:min-h-0 order-2 sm:order-1"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={!talentsRolled}
-                  className={`flex-1 py-2 rounded font-bold ${
+                  className={`flex-1 py-3 sm:py-2 rounded font-bold min-h-[44px] sm:min-h-0 order-1 sm:order-2 ${
                     talentsRolled
                       ? 'bg-green-600 hover:bg-green-700 text-white'
                       : 'bg-gray-600 text-gray-400 cursor-not-allowed'

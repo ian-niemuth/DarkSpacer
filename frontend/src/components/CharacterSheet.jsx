@@ -81,17 +81,16 @@ function CharacterSheet() {
   const { id } = useParams();
   const [character, setCharacter] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [notification, setNotification] = useState('');
+  const [toasts, setToasts] = useState([]);
   const [socket, setSocket] = useState(null);
   const [abilityUses, setAbilityUses] = useState({});
-  const [inventoryInfo, setInventoryInfo] = useState({ 
-  slotsUsed: 0, 
-  maxSlots: 10, 
-  percentFull: 0 
+  const [inventoryInfo, setInventoryInfo] = useState({
+  slotsUsed: 0,
+  maxSlots: 10,
+  percentFull: 0
 });
   const [equippedGear, setEquippedGear] = useState([]);
   const [acBreakdown, setAcBreakdown] = useState('');
-  const [equipError, setEquipError] = useState('');
   const [poweredGear, setPoweredGear] = useState([]);
   const [availableCells, setAvailableCells] = useState([]);
   const [showCellModal, setShowCellModal] = useState(false);
@@ -122,6 +121,23 @@ function CharacterSheet() {
   const [showHPAdjust, setShowHPAdjust] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [communicatorPowered, setCommunicatorPowered] = useState(null); // null = loading, true/false = status
+
+  // Toast notification system
+  const addToast = (message, type = 'success') => {
+    const id = Date.now() + Math.random(); // Unique ID
+    const newToast = { id, message, type };
+
+    setToasts(prev => [...prev, newToast]);
+
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+      removeToast(id);
+    }, 5000);
+  };
+
+  const removeToast = (id) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+  };
 
   // Play notification sound (3 pings)
   const playNotificationSound = () => {
@@ -190,65 +206,58 @@ function CharacterSheet() {
     newSocket.on('character_updated', (data) => {
       // Only show notification if not a silent update (e.g., HP changes)
       if (!data.silent && data.message) {
-        setNotification(data.message);
-        setTimeout(() => setNotification(''), 5000);
+        addToast(data.message, 'success');
       }
       fetchCharacter();
     });
     
     newSocket.on('item_received', (data) => {
-      setNotification(data.message);
+      addToast(data.message, 'success');
       fetchCharacter();
       checkCommunicatorPower();
-      setTimeout(() => setNotification(''), 5000);
     });
     
     newSocket.on('credits_received', (data) => {
-      setNotification(data.message);
+      addToast(data.message, 'success');
       fetchCharacter();
-      setTimeout(() => setNotification(''), 5000);
     });
     
     newSocket.on('credits_updated', (data) => {
-      setNotification(data.message);
+      addToast(data.message, 'success');
       fetchCharacter();
-      setTimeout(() => setNotification(''), 5000);
     });
     
     newSocket.on('inventory_updated', (data) => {
-      setNotification(data.message);
+      // Silent update - data refreshes automatically (to avoid duplicate toasts)
       fetchCharacter();
       fetchPoweredGear(); // Explicitly refresh powered gear
       fetchEquippedGear(); // Explicitly refresh equipped gear
       fetchAvailableCells(); // Explicitly refresh available cells
       fetchAvailableAmmo(); // Explicitly refresh available ammo
-      setTimeout(() => setNotification(''), 5000);
     });
 
     newSocket.on('equipment_changed', (data) => {
-      if (data.message) {
-        setNotification(data.message);
-        setTimeout(() => setNotification(''), 5000);
-      }
+      // Silent update - no toast (to avoid duplicates with item_removed)
       fetchCharacter(); // Refresh character data (including AC)
       fetchEquippedGear(); // Refresh equipped gear
       fetchPoweredGear(); // Refresh powered gear in case powered armor was equipped/unequipped
     });
 
     newSocket.on('item_removed', (data) => {
-      setNotification(data.message);
+      // Only show toast if there's a meaningful message (typically from DM actions)
+      if (data.message && !data.message.includes('updated')) {
+        addToast(data.message, 'success');
+      }
       fetchCharacter(); // Refresh character data
       fetchEquippedGear(); // Refresh equipped gear in case it was removed
       fetchPoweredGear(); // Refresh powered gear
       fetchAvailableCells(); // Refresh available cells
       fetchAvailableAmmo(); // Refresh available ammo
-      setTimeout(() => setNotification(''), 5000);
     });
 
     newSocket.on('daily_abilities_reset', (data) => {
-      setNotification(data.message);
+      addToast(data.message, 'success');
       fetchAbilityUses();
-      setTimeout(() => setNotification(''), 5000);
     });
 
     newSocket.on('ship_updated', (data) => {
@@ -328,33 +337,35 @@ function CharacterSheet() {
 
   const handleEquip = async (itemId, slot) => {
     try {
-      setEquipError('');
-      await api.post(
+      const response = await api.post(
         `${API_URL}/inventory/equip/${id}/${itemId}`,
         { slot }
       );
+      if (response.data.message) {
+        addToast(response.data.message, 'success');
+      }
       fetchCharacter();
       fetchEquippedGear();
     } catch (error) {
       console.error('Error equipping item:', error);
-      setEquipError(error.response?.data?.error || 'Failed to equip item');
-      setTimeout(() => setEquipError(''), 5000);
+      addToast(error.response?.data?.error || 'Failed to equip item', 'error');
     }
   };
 
   const handleUnequip = async (itemId) => {
     try {
-      setEquipError('');
-      await api.post(
+      const response = await api.post(
         `${API_URL}/inventory/unequip/${id}/${itemId}`,
         {}
       );
+      if (response.data.message) {
+        addToast(response.data.message, 'success');
+      }
       fetchCharacter();
       fetchEquippedGear();
     } catch (error) {
       console.error('Error unequipping item:', error);
-      setEquipError(error.response?.data?.error || 'Failed to unequip item');
-      setTimeout(() => setEquipError(''), 5000);
+      addToast(error.response?.data?.error || 'Failed to unequip item', 'error');
     }
   };
 
@@ -425,11 +436,13 @@ function CharacterSheet() {
 
   const handleLoadCell = async (cellId) => {
     try {
-      setEquipError('');
-      await api.post(
+      const response = await api.post(
         `${API_URL}/inventory/load-cell/${id}/${selectedItemForCell.id}`,
         { energyCellId: cellId }
       );
+      if (response.data.message) {
+        addToast(response.data.message, 'success');
+      }
       setShowCellModal(false);
       setSelectedItemForCell(null);
       fetchCharacter();
@@ -438,60 +451,62 @@ function CharacterSheet() {
       checkCommunicatorPower();
     } catch (error) {
       console.error('Error loading cell:', error);
-      setEquipError(error.response?.data?.error || 'Failed to load energy cell');
-      setTimeout(() => setEquipError(''), 5000);
+      addToast(error.response?.data?.error || 'Failed to load energy cell', 'error');
     }
   };
 
   const handleUnloadCell = async (itemId) => {
     try {
-      setEquipError('');
-      await api.post(
+      const response = await api.post(
         `${API_URL}/inventory/unload-cell/${id}/${itemId}`,
         {}
       );
+      if (response.data.message) {
+        addToast(response.data.message, 'success');
+      }
       fetchCharacter();
       fetchPoweredGear();
       fetchAvailableCells();
       checkCommunicatorPower();
     } catch (error) {
       console.error('Error unloading cell:', error);
-      setEquipError(error.response?.data?.error || 'Failed to unload energy cell');
-      setTimeout(() => setEquipError(''), 5000);
+      addToast(error.response?.data?.error || 'Failed to unload energy cell', 'error');
     }
   };
 
   const handleLoadAmmo = async (ammoId) => {
     try {
-      setEquipError('');
-      await api.post(
+      const response = await api.post(
         `${API_URL}/inventory/load-ammo/${id}/${selectedItemForAmmo.id}`,
         { ammoClipId: ammoId }
       );
+      if (response.data.message) {
+        addToast(response.data.message, 'success');
+      }
       setShowAmmoModal(false);
       setSelectedItemForAmmo(null);
       fetchCharacter();
       fetchAvailableAmmo();
     } catch (error) {
       console.error('Error loading ammo:', error);
-      setEquipError(error.response?.data?.error || 'Failed to load ammo');
-      setTimeout(() => setEquipError(''), 5000);
+      addToast(error.response?.data?.error || 'Failed to load ammo', 'error');
     }
   };
 
   const handleUnloadAmmo = async (itemId) => {
     try {
-      setEquipError('');
-      await api.post(
+      const response = await api.post(
         `${API_URL}/inventory/unload-ammo/${id}/${itemId}`,
         {}
       );
+      if (response.data.message) {
+        addToast(response.data.message, 'success');
+      }
       fetchCharacter();
       fetchAvailableAmmo();
     } catch (error) {
       console.error('Error unloading ammo:', error);
-      setEquipError(error.response?.data?.error || 'Failed to unload ammo');
-      setTimeout(() => setEquipError(''), 5000);
+      addToast(error.response?.data?.error || 'Failed to unload ammo', 'error');
     }
   };
 
@@ -499,7 +514,6 @@ function CharacterSheet() {
     if (!selectedConsumable) return;
 
     try {
-      setEquipError('');
       await api.post(
         `${API_URL}/inventory/use-consumable/${id}/${selectedConsumable.id}`,
         {}
@@ -510,8 +524,7 @@ function CharacterSheet() {
       fetchAvailableCells();
     } catch (error) {
       console.error('Error using consumable:', error);
-      setEquipError(error.response?.data?.error || 'Failed to use consumable');
-      setTimeout(() => setEquipError(''), 5000);
+      addToast(error.response?.data?.error || 'Failed to use consumable', 'error');
       setShowUseConfirm(false);
       setSelectedConsumable(null);
     }
@@ -521,7 +534,6 @@ function CharacterSheet() {
     if (!selectedDiscard) return;
 
     try {
-      setEquipError('');
       await api.delete(
         `${API_URL}/inventory/discard/${id}/${selectedDiscard.id}`,
         { 
@@ -534,8 +546,7 @@ function CharacterSheet() {
       fetchAvailableCells();
     } catch (error) {
       console.error('Error discarding item:', error);
-      setEquipError(error.response?.data?.error || 'Failed to discard item');
-      setTimeout(() => setEquipError(''), 5000);
+      addToast(error.response?.data?.error || 'Failed to discard item', 'error');
       setShowDiscardConfirm(false);
       setSelectedDiscard(null);
     }
@@ -555,8 +566,7 @@ function CharacterSheet() {
     
     // Validate bounds
     if (newHP < 0 || newHP > character.hp_max) {
-      setEquipError(`HP must be between 0 and ${character.hp_max}`);
-      setTimeout(() => setEquipError(''), 3000);
+      addToast(`HP must be between 0 and ${character.hp_max}`, 'error');
       return;
     }
 
@@ -568,8 +578,7 @@ function CharacterSheet() {
       // Keep the HP adjustment panel open for multiple adjustments
     } catch (error) {
       console.error('Error adjusting HP:', error);
-      setEquipError(error.response?.data?.error || 'Failed to adjust HP');
-      setTimeout(() => setEquipError(''), 3000);
+      addToast(error.response?.data?.error || 'Failed to adjust HP', 'error');
     }
   };
 
@@ -597,21 +606,18 @@ function CharacterSheet() {
 
   const handleTransferCredits = async () => {
     if (!selectedRecipient) {
-      setEquipError('Please select a recipient');
-      setTimeout(() => setEquipError(''), 3000);
+      addToast('Please select a recipient', 'error');
       return;
     }
 
     const amount = parseInt(transferAmount);
     if (!amount || amount <= 0) {
-      setEquipError('Please enter a valid amount');
-      setTimeout(() => setEquipError(''), 3000);
+      addToast('Please enter a valid amount', 'error');
       return;
     }
 
     if (amount > character.credits) {
-      setEquipError(`Insufficient credits. You only have ${character.credits}cr`);
-      setTimeout(() => setEquipError(''), 3000);
+      addToast(`Insufficient credits. You only have ${character.credits}cr`, 'error');
       return;
     }
 
@@ -627,27 +633,23 @@ function CharacterSheet() {
         }
       );
 
-      setNotification(`✅ Transferred ${amount}cr to ${recipient.name}!`);
-      setTimeout(() => setNotification(''), 5000);
+      addToast(`✅ Transferred ${amount}cr to ${recipient.name}!`, 'success');
       setShowTransferCredits(false);
       fetchCharacter();
     } catch (error) {
       console.error('Error transferring credits:', error);
-      setEquipError(error.response?.data?.error || 'Failed to transfer credits');
-      setTimeout(() => setEquipError(''), 5000);
+      addToast(error.response?.data?.error || 'Failed to transfer credits', 'error');
     }
   };
 
   const handleGiftItem = async () => {
     if (!selectedRecipient) {
-      setEquipError('Please select a recipient');
-      setTimeout(() => setEquipError(''), 3000);
+      addToast('Please select a recipient', 'error');
       return;
     }
 
     if (giftQuantity <= 0 || giftQuantity > selectedGiftItem.quantity) {
-      setEquipError(`Invalid quantity. Must be between 1 and ${selectedGiftItem.quantity}`);
-      setTimeout(() => setEquipError(''), 3000);
+      addToast(`Invalid quantity. Must be between 1 and ${selectedGiftItem.quantity}`, 'error');
       return;
     }
 
@@ -662,15 +664,13 @@ function CharacterSheet() {
         }
       );
 
-      setNotification(`✅ Gifted ${giftQuantity}× ${selectedGiftItem.item_name} to ${recipient.name}!`);
-      setTimeout(() => setNotification(''), 5000);
+      addToast(`✅ Gifted ${giftQuantity}× ${selectedGiftItem.item_name} to ${recipient.name}!`, 'success');
       setShowGiftItem(false);
       setSelectedGiftItem(null);
       fetchCharacter();
     } catch (error) {
       console.error('Error gifting item:', error);
-      setEquipError(error.response?.data?.error || 'Failed to gift item');
-      setTimeout(() => setEquipError(''), 5000);
+      addToast(error.response?.data?.error || 'Failed to gift item', 'error');
     }
   };
 
@@ -774,8 +774,7 @@ function CharacterSheet() {
       });
     } catch (error) {
       console.error('Error marking ability as used:', error);
-      setEquipError('Failed to mark ability as used');
-      setTimeout(() => setEquipError(''), 3000);
+      addToast('Failed to mark ability as used', 'error');
     }
   };
 
@@ -823,18 +822,8 @@ function CharacterSheet() {
   const talents = safeParseTalents(character.talents);
 
   return (
+    <>
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
-      {notification && (
-        <div className="mb-3 sm:mb-4 bg-green-600 text-white px-4 sm:px-6 py-3 rounded-lg animate-pulse text-sm sm:text-base">
-          {notification}
-        </div>
-      )}
-
-      {equipError && (
-        <div className="mb-3 sm:mb-4 bg-red-600 text-white px-4 sm:px-6 py-3 rounded-lg text-sm sm:text-base">
-          {equipError}
-        </div>
-      )}
 
       {/* Level Up Available Banner */}
       {canLevelUp && (
@@ -936,25 +925,25 @@ function CharacterSheet() {
               {!showHPAdjust ? (
                 <button
                   onClick={() => setShowHPAdjust(true)}
-                  className="text-xs sm:text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded"
+                  className="text-xs sm:text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded min-h-[40px] sm:min-h-0"
                 >
                   Adjust HP
                 </button>
               ) : (
                 <div className="space-y-2">
                   {/* Quick adjustment buttons */}
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 sm:gap-2">
                     <button
                       onClick={() => handleHPAdjust(-5)}
                       disabled={character.hp_current <= 0}
-                      className="flex-1 text-xs bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-2 py-1 rounded"
+                      className="flex-1 text-xs sm:text-sm bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-2 py-2 sm:py-1 rounded min-h-[44px] sm:min-h-0"
                     >
                       -5
                     </button>
                     <button
                       onClick={() => handleHPAdjust(-1)}
                       disabled={character.hp_current <= 0}
-                      className="flex-1 text-lg bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-2 py-1 rounded font-bold"
+                      className="flex-1 text-lg bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-2 py-2 sm:py-1 rounded font-bold min-h-[44px] sm:min-h-0"
                       title="Decrease HP by 1"
                     >
                       ▼
@@ -962,7 +951,7 @@ function CharacterSheet() {
                     <button
                       onClick={() => handleHPAdjust(1)}
                       disabled={character.hp_current >= character.hp_max}
-                      className="flex-1 text-lg bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-2 py-1 rounded font-bold"
+                      className="flex-1 text-lg bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-2 py-2 sm:py-1 rounded font-bold min-h-[44px] sm:min-h-0"
                       title="Increase HP by 1"
                     >
                       ▲
@@ -970,14 +959,14 @@ function CharacterSheet() {
                     <button
                       onClick={() => handleHPAdjust(5)}
                       disabled={character.hp_current >= character.hp_max}
-                      className="flex-1 text-xs bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-2 py-1 rounded"
+                      className="flex-1 text-xs sm:text-sm bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-2 py-2 sm:py-1 rounded min-h-[44px] sm:min-h-0"
                     >
                       +5
                     </button>
                   </div>
                   <button
                     onClick={() => setShowHPAdjust(false)}
-                    className="text-xs bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded w-full"
+                    className="text-xs sm:text-sm bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded w-full min-h-[40px] sm:min-h-0"
                   >
                     Close
                   </button>
@@ -1000,7 +989,7 @@ function CharacterSheet() {
           {/* Ability Scores - Compact Grid */}
           <div className="bg-gray-700 rounded-lg p-3 sm:p-4 sm:col-span-2 lg:col-span-1">
             <div className="text-gray-400 text-xs sm:text-sm uppercase mb-2">Ability Scores</div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-x-4 gap-y-1 text-sm sm:text-base">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:text-base">
               {['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'].map(
                 (stat) => {
                   const bonuses = getStatWithBonusInfo(stat);
@@ -1081,7 +1070,7 @@ function CharacterSheet() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Left Column */}
         <div className="space-y-4 sm:space-y-6">
 
@@ -1195,7 +1184,7 @@ function CharacterSheet() {
                       </div>
                       <button
                         onClick={() => handleUnequip(equippedGear.find(item => item.equipped_slot === 'primary_weapon').id)}
-                        className="text-xs sm:text-sm bg-red-600 hover:bg-red-700 px-3 py-2 rounded min-h-[40px] sm:min-h-0"
+                        className="text-xs sm:text-sm bg-red-600 hover:bg-red-700 px-3 py-2 rounded min-h-[44px] sm:min-h-0"
                       >
                         Unequip
                       </button>
@@ -1229,7 +1218,7 @@ function CharacterSheet() {
                       </div>
                       <button
                         onClick={() => handleUnequip(equippedGear.find(item => item.equipped_slot === 'secondary_weapon' || item.equipped_slot === 'shield').id)}
-                        className="text-xs bg-red-600 hover:bg-red-700 px-2 py-1 rounded"
+                        className="text-xs sm:text-sm bg-red-600 hover:bg-red-700 px-3 py-2 rounded min-h-[44px] sm:min-h-0"
                       >
                         Unequip
                       </button>
@@ -1256,7 +1245,7 @@ function CharacterSheet() {
                       </div>
                       <button
                         onClick={() => handleUnequip(equippedGear.find(item => item.equipped_slot === 'body_armor').id)}
-                        className="text-xs bg-red-600 hover:bg-red-700 px-2 py-1 rounded"
+                        className="text-xs sm:text-sm bg-red-600 hover:bg-red-700 px-3 py-2 rounded min-h-[44px] sm:min-h-0"
                       >
                         Unequip
                       </button>
@@ -1283,7 +1272,7 @@ function CharacterSheet() {
                       </div>
                       <button
                         onClick={() => handleUnequip(equippedGear.find(item => item.equipped_slot === 'helmet').id)}
-                        className="text-xs bg-red-600 hover:bg-red-700 px-2 py-1 rounded"
+                        className="text-xs sm:text-sm bg-red-600 hover:bg-red-700 px-3 py-2 rounded min-h-[44px] sm:min-h-0"
                       >
                         Unequip
                       </button>
@@ -1592,12 +1581,25 @@ function CharacterSheet() {
                                     {item.equipped && (
                                       <span className="text-xs bg-green-600 px-2 py-0.5 rounded">EQUIPPED</span>
                                     )}
+                                    {item.in_use_by_item_id && (
+                                      <span className="text-xs bg-yellow-600 px-2 py-0.5 rounded">IN USE</span>
+                                    )}
                                   </div>
                                   
                                   {item.description && (
                                     <div className="text-sm text-gray-400 mt-1">{item.description}</div>
                                   )}
-                                  
+
+                                  {/* Show which item this consumable is loaded into */}
+                                  {item.in_use_by_item_id && (() => {
+                                    const parentItem = character.inventory.find(i => i.id === item.in_use_by_item_id);
+                                    return parentItem && (
+                                      <div className="text-xs text-yellow-400 mt-1">
+                                        🔗 Loaded in: <span className="font-semibold">{parentItem.item_name}</span>
+                                      </div>
+                                    );
+                                  })()}
+
                                   <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
                                     <span>
                                       {slotsUsed === 0 ? 'FREE' : 
@@ -1642,7 +1644,7 @@ function CharacterSheet() {
                                   {item.equipped ? (
                                     <button
                                     onClick={() => handleUnequip(item.id)}
-                                    className="text-xs sm:text-sm bg-red-600 hover:bg-red-700 px-3 py-2 rounded whitespace-nowrap min-h-[36px] sm:min-h-0 flex-1 sm:flex-none"
+                                    className="text-xs sm:text-sm bg-red-600 hover:bg-red-700 px-3 py-2 rounded whitespace-nowrap min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"
                                     >
                                     Unequip
                                     </button>
@@ -1650,7 +1652,7 @@ function CharacterSheet() {
                                     determineSlot(item) && (
                                       <button
                                       onClick={() => handleEquip(item.id, determineSlot(item))}
-                                      className="text-xs sm:text-sm bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded whitespace-nowrap min-h-[36px] sm:min-h-0 flex-1 sm:flex-none"
+                                      className="text-xs sm:text-sm bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded whitespace-nowrap min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"
                                       >
                                       Equip
                                       </button>
@@ -1662,14 +1664,14 @@ function CharacterSheet() {
                                     hasEnergyCell(item) ? (
                                       <button
                                       onClick={() => handleUnloadCell(item.id)}
-                                      className="text-xs sm:text-sm bg-yellow-600 hover:bg-yellow-700 px-3 py-2 rounded whitespace-nowrap min-h-[36px] sm:min-h-0 flex-1 sm:flex-none"
+                                      className="text-xs sm:text-sm bg-yellow-600 hover:bg-yellow-700 px-3 py-2 rounded whitespace-nowrap min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"
                                       >
                                       Unload Cell
                                       </button>
                                     ) : (
                                       <button
                                       onClick={() => openLoadCellModal(item)}
-                                      className="text-xs sm:text-sm bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded whitespace-nowrap min-h-[36px] sm:min-h-0 flex-1 sm:flex-none"
+                                      className="text-xs sm:text-sm bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded whitespace-nowrap min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"
                                       disabled={availableCells.length === 0}
                                       >
                                       Load Cell
@@ -1682,14 +1684,14 @@ function CharacterSheet() {
                                     hasAmmo(item) ? (
                                       <button
                                       onClick={() => handleUnloadAmmo(item.id)}
-                                      className="text-xs sm:text-sm bg-orange-600 hover:bg-orange-700 px-3 py-2 rounded whitespace-nowrap min-h-[36px] sm:min-h-0 flex-1 sm:flex-none"
+                                      className="text-xs sm:text-sm bg-orange-600 hover:bg-orange-700 px-3 py-2 rounded whitespace-nowrap min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"
                                       >
                                       Unload Ammo
                                       </button>
                                     ) : (
                                       <button
                                       onClick={() => openLoadAmmoModal(item)}
-                                      className="text-xs sm:text-sm bg-cyan-600 hover:bg-cyan-700 px-3 py-2 rounded whitespace-nowrap min-h-[36px] sm:min-h-0 flex-1 sm:flex-none"
+                                      className="text-xs sm:text-sm bg-cyan-600 hover:bg-cyan-700 px-3 py-2 rounded whitespace-nowrap min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"
                                       disabled={availableAmmo.length === 0}
                                       >
                                       Load Ammo
@@ -1701,7 +1703,7 @@ function CharacterSheet() {
                                   {item.item_type === 'consumable' && !item.item_name.toLowerCase().includes('energy cell') && !item.item_name.toLowerCase().includes('ammo') && (
                                     <button
                                       onClick={() => openUseConfirm(item)}
-                                      className="text-xs sm:text-sm bg-green-600 hover:bg-green-700 px-3 py-2 rounded whitespace-nowrap min-h-[36px] sm:min-h-0 flex-1 sm:flex-none"
+                                      className="text-xs sm:text-sm bg-green-600 hover:bg-green-700 px-3 py-2 rounded whitespace-nowrap min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"
                                     >
                                       Use
                                     </button>
@@ -1711,7 +1713,7 @@ function CharacterSheet() {
                                   {!item.equipped && !item.in_use_by_item_id && !item.loaded_energy_cell_id && !item.loaded_ammo_id && (
                                     <button
                                       onClick={() => openGiftItem(item)}
-                                      className="text-xs sm:text-sm bg-indigo-600 hover:bg-indigo-700 px-3 py-2 rounded whitespace-nowrap min-h-[36px] sm:min-h-0 flex-1 sm:flex-none"
+                                      className="text-xs sm:text-sm bg-indigo-600 hover:bg-indigo-700 px-3 py-2 rounded whitespace-nowrap min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"
                                       disabled={partyMembers.length === 0}
                                       title={partyMembers.length === 0 ? 'No other characters available' : 'Gift to another character'}
                                     >
@@ -1723,7 +1725,7 @@ function CharacterSheet() {
                                   {!item.equipped && !item.in_use_by_item_id && !item.loaded_energy_cell_id && !item.loaded_ammo_id && (
                                     <button
                                       onClick={() => openDiscardConfirm(item)}
-                                      className="text-xs sm:text-sm bg-gray-600 hover:bg-gray-700 px-3 py-2 rounded whitespace-nowrap min-h-[36px] sm:min-h-0 flex-1 sm:flex-none"
+                                      className="text-xs sm:text-sm bg-gray-600 hover:bg-gray-700 px-3 py-2 rounded whitespace-nowrap min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"
                                     >
                                       Discard
                                     </button>
@@ -1912,7 +1914,7 @@ function CharacterSheet() {
                   <button
                     key={cell.id}
                     onClick={() => handleLoadCell(cell.id)}
-                    className="w-full bg-gray-700 hover:bg-gray-600 text-white p-3 sm:p-4 rounded text-left transition min-h-[44px]">
+                    className="w-full bg-gray-700 hover:bg-gray-600 text-white p-3 sm:p-4 rounded text-left transition min-h-[44px]"
                   >
                     <div className="font-bold text-base">{cell.item_name}</div>
                     <div className="text-sm text-gray-400">Quantity: {cell.quantity}</div>
@@ -2266,6 +2268,45 @@ function CharacterSheet() {
         </div>
       )}
     </div>
+
+    {/* Toast Notification Container - Bottom Right */}
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+      {toasts.map((toast, index) => (
+        <div
+          key={toast.id}
+          className={`${
+            toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+          } text-white px-4 py-3 rounded-lg shadow-lg flex items-center justify-between gap-3 min-w-[300px] animate-slide-in-right`}
+          style={{
+            animation: 'slideInRight 0.3s ease-out forwards',
+          }}
+        >
+          <span className="flex-1 text-sm">{toast.message}</span>
+          <button
+            onClick={() => removeToast(toast.id)}
+            className="text-white hover:text-gray-200 font-bold text-lg leading-none min-w-[24px] min-h-[24px]"
+            aria-label="Dismiss notification"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+    </div>
+
+    {/* Add keyframe animation to global styles */}
+    <style>{`
+      @keyframes slideInRight {
+        from {
+          transform: translateX(400px);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+    `}</style>
+    </>
   );
 }
 

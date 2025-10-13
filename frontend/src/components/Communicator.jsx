@@ -59,59 +59,87 @@ function Communicator() {
 
     fetchCharacter();
 
-    // Check power status first
+    // Check initial power status
     checkPower().then((status) => {
-      if (!status.powered) {
-        console.log('[Communicator] Communicator offline, skipping message/socket setup');
-        return;
-      }
-
-      // Only proceed if powered
-      fetchMessages();
-      fetchUnreadCount();
-      fetchAvailablePlayers();
-
-      // Socket for real-time updates
-      const newSocket = io(WS_URL);
-      setSocket(newSocket);
-
-      newSocket.on('connect', () => {
-        console.log('[Communicator] Socket connected:', newSocket.id);
-        newSocket.emit('join_character', characterId);
-        console.log('[Communicator] Joined character room:', characterId);
-      });
-
-      newSocket.on('new_message', (msg) => {
-        console.log('[Communicator] New message received:', msg);
-
-        // Refresh messages and unread count
+      if (status.powered) {
+        // Load messages only if powered
         fetchMessages();
         fetchUnreadCount();
+        fetchAvailablePlayers();
+      }
+    });
 
-        // Only play sound if message is relevant to this character
-        const isFromMe = msg.sender_type === 'character' && msg.sender_id === parseInt(characterId);
+    // Always set up socket for real-time updates (even if offline)
+    // This allows us to detect when power is restored or lost
+    const newSocket = io(WS_URL);
+    setSocket(newSocket);
 
-        // Check if this message is for me (or a broadcast I should see)
-        const isDirectToMe = msg.recipient_type === 'character' && msg.recipient_id === parseInt(characterId);
-        const isBroadcast = msg.recipient_type === 'all' || msg.recipient_type === 'party';
-        const isForMe = isDirectToMe || isBroadcast;
+    newSocket.on('connect', () => {
+      console.log('[Communicator] Socket connected:', newSocket.id);
+      newSocket.emit('join_character', characterId);
+      console.log('[Communicator] Joined character room:', characterId);
+    });
 
-        // Play sound only if message is FOR this character and NOT from this character
-        if (!isFromMe && isForMe) {
-          console.log('[Communicator] Playing notification sound');
-          playNotificationSound();
-        } else {
-          console.log('[Communicator] Not playing sound - isFromMe:', isFromMe, 'isForMe:', isForMe);
+    newSocket.on('new_message', (msg) => {
+      console.log('[Communicator] New message received:', msg);
+
+      // Refresh messages and unread count
+      fetchMessages();
+      fetchUnreadCount();
+
+      // Only play sound if message is relevant to this character
+      const isFromMe = msg.sender_type === 'character' && msg.sender_id === parseInt(characterId);
+
+      // Check if this message is for me (or a broadcast I should see)
+      const isDirectToMe = msg.recipient_type === 'character' && msg.recipient_id === parseInt(characterId);
+      const isBroadcast = msg.recipient_type === 'all' || msg.recipient_type === 'party';
+      const isForMe = isDirectToMe || isBroadcast;
+
+      // Play sound only if message is FOR this character and NOT from this character
+      if (!isFromMe && isForMe) {
+        console.log('[Communicator] Playing notification sound');
+        playNotificationSound();
+      } else {
+        console.log('[Communicator] Not playing sound - isFromMe:', isFromMe, 'isForMe:', isForMe);
+      }
+    });
+
+    // Listen for inventory/equipment changes that might affect power status
+    newSocket.on('equipment_changed', () => {
+      console.log('[Communicator] Equipment changed, rechecking power status');
+      checkPower().then((status) => {
+        // If power was restored, fetch messages
+        if (status.powered) {
+          fetchMessages();
+          fetchUnreadCount();
+          fetchAvailablePlayers();
         }
       });
+    });
 
-      newSocket.on('disconnect', () => {
-        console.log('[Communicator] Socket disconnected');
-      });
+    newSocket.on('item_removed', () => {
+      console.log('[Communicator] Item removed, rechecking power status');
+      checkPower();
+    });
 
-      newSocket.on('connect_error', (error) => {
-        console.error('[Communicator] Socket connection error:', error);
+    newSocket.on('inventory_updated', () => {
+      console.log('[Communicator] Inventory updated, rechecking power status');
+      checkPower().then((status) => {
+        // If power was restored, fetch messages
+        if (status.powered) {
+          fetchMessages();
+          fetchUnreadCount();
+          fetchAvailablePlayers();
+        }
       });
+    });
+
+    newSocket.on('disconnect', () => {
+      console.log('[Communicator] Socket disconnected');
+    });
+
+    newSocket.on('connect_error', (error) => {
+      console.error('[Communicator] Socket connection error:', error);
     });
 
     // Cleanup function
@@ -434,7 +462,7 @@ function Communicator() {
             {/* Back button */}
             <button
               onClick={() => navigate(`/character/${characterId}`)}
-              className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-red-400 rounded border-2 border-red-600 font-mono font-bold text-lg transition"
+              className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-red-400 rounded border-2 border-red-600 font-mono font-bold text-base sm:text-lg transition min-h-[44px]"
             >
               ← RETURN TO CHARACTER SHEET
             </button>
@@ -452,34 +480,34 @@ function Communicator() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Communicator Header */}
-      <div className="bg-gradient-to-r from-green-900 to-green-800 rounded-t-lg p-6 border-2 border-green-500">
-        <div className="flex justify-between items-center">
-          <div className="flex-1 flex items-center gap-4">
+      <div className="bg-gradient-to-r from-green-900 to-green-800 rounded-t-lg p-4 sm:p-6 border-2 border-green-500">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+          <div className="flex-1 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
             <button
               onClick={() => navigate(`/character/${characterId}`)}
-              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-green-400 rounded border-2 border-green-600 font-mono"
+              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-green-400 rounded border-2 border-green-600 font-mono min-h-[44px] sm:min-h-0"
               title="Back to Character Sheet"
             >
               ← BACK
             </button>
             <div>
-              <h1 className="text-3xl font-bold text-green-300 font-mono">
+              <h1 className="text-2xl sm:text-3xl font-bold text-green-300 font-mono">
                 [COMMUNICATOR TERMINAL]
               </h1>
-              <div className="text-green-400 text-sm mt-1 font-mono">
+              <div className="text-green-400 text-xs sm:text-sm mt-1 font-mono">
                 USER: {character.name.toUpperCase()} | STATUS: ONLINE
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
             <button
               onClick={() => setShowComposer(true)}
-              className="px-4 py-2 bg-blue-700 hover:bg-blue-600 text-white rounded border-2 border-blue-500 font-mono font-bold"
+              className="px-4 py-2 bg-blue-700 hover:bg-blue-600 text-white rounded border-2 border-blue-500 font-mono font-bold min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"
             >
               [+ NEW MESSAGE]
             </button>
             <div className="text-right">
-              <div className="text-4xl font-bold text-green-300 font-mono">
+              <div className="text-3xl sm:text-4xl font-bold text-green-300 font-mono">
                 {unreadCount > 0 ? (
                   <span className="animate-pulse">[{unreadCount}]</span>
                 ) : (
@@ -529,7 +557,7 @@ function Communicator() {
                 <div
                   key={msg.id}
                   onClick={() => viewMessage(msg.id)}
-                  className={`p-4 transition cursor-pointer ${
+                  className={`p-3 sm:p-4 transition cursor-pointer ${
                     showAsNew
                       ? 'bg-green-900 bg-opacity-30 hover:bg-opacity-50 border-l-4 border-green-400'
                       : iParticipated
@@ -537,17 +565,17 @@ function Communicator() {
                       : 'hover:bg-green-900 hover:bg-opacity-20'
                   }`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
+                  <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
+                    <div className="flex-1 w-full">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-2xl">{getPriorityIcon(msg.priority)}</span>
-                        <div>
-                          <div className="font-bold text-green-300 font-mono">
+                        <span className="text-xl sm:text-2xl">{getPriorityIcon(msg.priority)}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-green-300 font-mono text-sm sm:text-base">
                             {showAsNew && <span className="text-green-400 mr-2">[NEW]</span>}
                             {iParticipated && !hasUnreadReplies && <span className="text-blue-400 mr-2">[SENT]</span>}
-                            {msg.subject || '[NO SUBJECT]'}
+                            <span className="break-words">{msg.subject || '[NO SUBJECT]'}</span>
                           </div>
-                          <div className="text-sm text-green-400 font-mono">
+                          <div className="text-xs sm:text-sm text-green-400 font-mono">
                             {msg.sender_type === 'character' && msg.sender_id === parseInt(characterId) ? (
                               // I sent the root message - show TO: recipient
                               msg.recipient_type === 'dm' ?
@@ -565,26 +593,28 @@ function Communicator() {
                           </div>
                         </div>
                       </div>
-                      <div className="text-sm text-gray-300 mt-2 line-clamp-2 font-mono">
+                      <div className="text-xs sm:text-sm text-gray-300 mt-2 line-clamp-2 font-mono">
                         {msg.latest_message_preview || msg.message_body}
                       </div>
                     </div>
-                    <div className="text-right ml-4">
+                    <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2 w-full sm:w-auto sm:text-right sm:ml-4">
                       {msg.priority !== 'normal' && (
-                        <div className={`text-xs px-2 py-1 rounded font-mono mb-2 ${
+                        <div className={`text-xs px-2 py-1 rounded font-mono ${
                           msg.priority === 'emergency' ? 'bg-red-600' : 'bg-yellow-600'
-                        } text-white animate-pulse`}>
+                        } text-white animate-pulse whitespace-nowrap`}>
                           {msg.priority.toUpperCase()}
                         </div>
                       )}
-                      <div className="text-xs text-green-600 font-mono">
-                        {new Date(msg.created_at).toLocaleDateString()}
-                      </div>
-                      <div className="text-xs text-green-700 font-mono">
-                        {new Date(msg.created_at).toLocaleTimeString()}
+                      <div className="flex sm:flex-col items-center sm:items-end gap-2 sm:gap-0">
+                        <div className="text-xs text-green-600 font-mono whitespace-nowrap">
+                          {new Date(msg.created_at).toLocaleDateString()}
+                        </div>
+                        <div className="text-xs text-green-700 font-mono whitespace-nowrap">
+                          {new Date(msg.created_at).toLocaleTimeString()}
+                        </div>
                       </div>
                       {msg.reply_count > 0 && (
-                        <div className="text-xs text-blue-400 mt-1 font-mono animate-pulse">
+                        <div className="text-xs text-blue-400 font-mono animate-pulse whitespace-nowrap">
                           💬 [{msg.reply_count} {msg.reply_count === 1 ? 'REPLY' : 'REPLIES'}]
                         </div>
                       )}
@@ -613,12 +643,12 @@ function Communicator() {
         <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 rounded-lg border-2 border-green-500 p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6 border-b-2 border-green-700 pb-4">
-              <h2 className="text-2xl font-bold text-green-300 font-mono">
+              <h2 className="text-xl sm:text-2xl font-bold text-green-300 font-mono">
                 [COMPOSE NEW MESSAGE]
               </h2>
               <button
                 onClick={() => setShowComposer(false)}
-                className="text-green-400 hover:text-green-300 text-3xl font-mono"
+                className="text-green-400 hover:text-green-300 text-2xl sm:text-3xl font-mono min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
               >
                 [X]
               </button>
@@ -710,17 +740,17 @@ function Communicator() {
                 />
               </div>
 
-              <div className="flex gap-3 justify-end pt-4 border-t-2 border-green-700">
+              <div className="flex flex-col sm:flex-row gap-3 justify-end pt-4 border-t-2 border-green-700">
                 <button
                   type="button"
                   onClick={() => setShowComposer(false)}
-                  className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-green-400 rounded border-2 border-green-700 font-mono"
+                  className="px-6 py-3 sm:py-2 bg-gray-700 hover:bg-gray-600 text-green-400 rounded border-2 border-green-700 font-mono min-h-[44px] sm:min-h-0 order-2 sm:order-1"
                 >
                   [CANCEL]
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2 bg-green-700 hover:bg-green-600 text-white rounded border-2 border-green-500 font-bold font-mono"
+                  className="px-6 py-3 sm:py-2 bg-green-700 hover:bg-green-600 text-white rounded border-2 border-green-500 font-bold font-mono min-h-[44px] sm:min-h-0 order-1 sm:order-2"
                 >
                   [SEND MESSAGE]
                 </button>
@@ -749,12 +779,12 @@ function MessageDetailModal({ message, character, onClose, onReply, onArchive })
     <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-900 rounded-lg border-2 border-green-500 p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6 border-b-2 border-green-700 pb-4">
-          <h2 className="text-2xl font-bold text-green-300 font-mono">
+          <h2 className="text-xl sm:text-2xl font-bold text-green-300 font-mono">
             [MESSAGE THREAD]
           </h2>
           <button
             onClick={onClose}
-            className="text-green-400 hover:text-green-300 text-3xl font-mono"
+            className="text-green-400 hover:text-green-300 text-2xl sm:text-3xl font-mono min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
           >
             [X]
           </button>
@@ -835,7 +865,7 @@ function MessageDetailModal({ message, character, onClose, onReply, onArchive })
             className="w-full bg-gray-800 text-green-300 px-3 py-2 rounded border-2 border-green-600 focus:border-green-400 focus:outline-none h-32 mb-3 font-mono"
             placeholder="Type your message..."
           />
-          <div className="flex gap-3 justify-between">
+          <div className="flex flex-col sm:flex-row gap-3 justify-between">
             <button
               type="button"
               onClick={() => {
@@ -843,21 +873,21 @@ function MessageDetailModal({ message, character, onClose, onReply, onArchive })
                   onArchive(message.message.thread_id || message.message.id);
                 }
               }}
-              className="px-4 py-2 bg-red-800 hover:bg-red-700 text-white rounded border-2 border-red-600 font-mono text-sm"
+              className="px-4 py-3 sm:py-2 bg-red-800 hover:bg-red-700 text-white rounded border-2 border-red-600 font-mono text-sm min-h-[44px] sm:min-h-0 order-3 sm:order-1"
             >
               [🗑️ ARCHIVE CONVERSATION]
             </button>
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-green-400 rounded border-2 border-green-700 font-mono"
+                className="px-6 py-3 sm:py-2 bg-gray-700 hover:bg-gray-600 text-green-400 rounded border-2 border-green-700 font-mono min-h-[44px] sm:min-h-0 order-2 sm:order-1"
               >
                 [CLOSE]
               </button>
               <button
                 type="submit"
-                className="px-6 py-2 bg-green-700 hover:bg-green-600 text-white rounded border-2 border-green-500 font-bold font-mono"
+                className="px-6 py-3 sm:py-2 bg-green-700 hover:bg-green-600 text-white rounded border-2 border-green-500 font-bold font-mono min-h-[44px] sm:min-h-0 order-1 sm:order-2"
               >
                 [SEND REPLY]
               </button>
