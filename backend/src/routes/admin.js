@@ -5,6 +5,71 @@ const pool = require('../config/database');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
 const { calculateArchetypeInventoryBonus } = require('../utils/archetypeAbilities');
 
+// ============================================
+// AC CALCULATION HELPER
+// ============================================
+
+/**
+ * Calculate character's AC based on equipped items
+ */
+async function calculateAC(characterId) {
+  // Get character's DEX modifier
+  const charResult = await pool.query(
+    'SELECT dexterity FROM characters WHERE id = $1',
+    [characterId]
+  );
+  const dex = charResult.rows[0]?.dexterity || 10;
+  const dexMod = Math.floor((dex - 10) / 2);
+
+  // Get equipped armor items
+  const equipped = await pool.query(`
+    SELECT
+      i.equipped_slot,
+      g.name,
+      g.category,
+      g.subcategory,
+      g.base_ac,
+      g.ac_bonus,
+      g.allows_dex_modifier
+    FROM inventory i
+    JOIN gear_database g ON LOWER(i.item_name) = LOWER(g.name)
+    WHERE i.character_id = $1
+    AND i.equipped_slot IN ('body_armor', 'helmet', 'shield')
+  `, [characterId]);
+
+  let finalAC = 10; // Base AC
+  let allowsDex = true; // Default: allow DEX modifier
+  let acBreakdown = ['Base: 10'];
+
+  for (const item of equipped.rows) {
+    if (item.equipped_slot === 'body_armor') {
+      // Body armor sets base AC
+      if (item.base_ac) {
+        finalAC = item.base_ac;
+        allowsDex = item.allows_dex_modifier;
+        acBreakdown = [`${item.name}: ${item.base_ac}`];
+      }
+    } else if (item.equipped_slot === 'helmet' || item.equipped_slot === 'shield') {
+      // Helmet and shield add bonuses
+      if (item.ac_bonus) {
+        finalAC += item.ac_bonus;
+        acBreakdown.push(`${item.name}: +${item.ac_bonus}`);
+      }
+    }
+  }
+
+  // Add DEX modifier if allowed
+  if (allowsDex && dexMod !== 0) {
+    finalAC += dexMod;
+    acBreakdown.push(`DEX: ${dexMod >= 0 ? '+' : ''}${dexMod}`);
+  }
+
+  return {
+    ac: finalAC,
+    breakdown: acBreakdown.join(', ')
+  };
+}
+
 router.use(authenticateToken);
 router.use(isAdmin);
 
@@ -71,7 +136,8 @@ router.get('/characters', async (req, res) => {
     const charactersWithGear = await Promise.all(
       result.rows.map(async (char) => {
         const equippedResult = await pool.query(
-          `SELECT i.id, item_name, equipped_slot, damage, range, properties, loaded_energy_cell_id
+          `SELECT i.id, item_name, equipped_slot, damage, range, properties,
+                  loaded_energy_cell_id, loaded_ammo_id
            FROM inventory i
            WHERE character_id = $1 AND equipped = true
            ORDER BY
@@ -97,6 +163,19 @@ router.get('/characters', async (req, res) => {
           [char.id]
         );
 
+        // Get all ammo weapons (Am items) - both equipped and unequipped
+        const ammoWeaponsResult = await pool.query(
+          `SELECT i.id, i.item_name, i.equipped, i.equipped_slot, i.loaded_ammo_id,
+                  g.properties
+           FROM inventory i
+           LEFT JOIN gear_database g ON LOWER(i.item_name) = LOWER(g.name)
+           WHERE i.character_id = $1
+             AND g.properties LIKE '%Am%'
+             AND LOWER(i.item_name) NOT LIKE '%ammo%'
+           ORDER BY i.equipped DESC, i.item_name`,
+          [char.id]
+        );
+
         // Calculate inventory slots
         const slots_used = await calculateSlotsUsed(char.id);
         const slots_max = getMaxSlots(char.strength, char.constitution, char.archetype);
@@ -105,6 +184,7 @@ router.get('/characters', async (req, res) => {
           ...char,
           equipped_gear: equippedResult.rows,
           powered_gear: poweredGearResult.rows,
+          ammo_weapons: ammoWeaponsResult.rows,
           slots_used,
           slots_max
         };
@@ -638,15 +718,24 @@ router.delete('/characters/:characterId/energy-cell/:itemId', async (req, res) =
     }
 
     const cellId = item.loaded_energy_cell_id;
+    const wasArmor = item.equipped_slot && ['body_armor', 'helmet', 'shield'].includes(item.equipped_slot);
 
-    // IMPORTANT: Clear the loaded_energy_cell_id reference FIRST (before deleting)
+    // IMPORTANT: Clear the loaded_energy_cell_id reference AND unequip the item (before deleting)
     await pool.query(
-      'UPDATE inventory SET loaded_energy_cell_id = NULL WHERE id = $1',
+      'UPDATE inventory SET loaded_energy_cell_id = NULL, equipped = false, equipped_slot = NULL WHERE id = $1',
       [itemId]
     );
 
     // Now delete the energy cell from inventory
     await pool.query('DELETE FROM inventory WHERE id = $1', [cellId]);
+
+    // If armor was unequipped, recalculate AC
+    let newAC = null;
+    if (wasArmor) {
+      const acData = await calculateAC(characterId);
+      await pool.query('UPDATE characters SET ac = $1 WHERE id = $2', [acData.ac, characterId]);
+      newAC = acData.ac;
+    }
 
     // Log activity
     await pool.query(
@@ -657,9 +746,13 @@ router.delete('/characters/:characterId/energy-cell/:itemId', async (req, res) =
 
     // Emit socket events
     const io = req.app.get('io');
-    io.to(`character_${characterId}`).emit('character_updated', {
+    const updateData = {
       message: `Energy cell expended from ${item.item_name}`
-    });
+    };
+    if (newAC !== null) {
+      updateData.ac = newAC;
+    }
+    io.to(`character_${characterId}`).emit('character_updated', updateData);
     io.to(`character_${characterId}`).emit('inventory_updated', {
       message: `Energy cell expended from ${item.item_name}`
     });
@@ -667,11 +760,85 @@ router.delete('/characters/:characterId/energy-cell/:itemId', async (req, res) =
 
     res.json({
       message: 'Energy cell expended successfully',
-      itemName: item.item_name
+      itemName: item.item_name,
+      ...(newAC !== null && { newAC })
     });
   } catch (error) {
     console.error('Error expending energy cell:', error);
     res.status(500).json({ error: 'Failed to expend energy cell' });
+  }
+});
+
+// DELETE ammo clip from equipped gear (expend ammo)
+router.delete('/characters/:characterId/ammo/:itemId', async (req, res) => {
+  try {
+    const { characterId, itemId } = req.params;
+
+    // Get the item with loaded ammo
+    const itemResult = await pool.query(
+      'SELECT * FROM inventory WHERE id = $1 AND character_id = $2',
+      [itemId, characterId]
+    );
+
+    if (itemResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    const item = itemResult.rows[0];
+
+    if (!item.loaded_ammo_id) {
+      return res.status(400).json({ error: 'No ammo clip loaded in this weapon' });
+    }
+
+    const ammoId = item.loaded_ammo_id;
+    const wasArmor = item.equipped_slot && ['body_armor', 'helmet', 'shield'].includes(item.equipped_slot);
+
+    // IMPORTANT: Clear the loaded_ammo_id reference AND unequip the item (before deleting)
+    await pool.query(
+      'UPDATE inventory SET loaded_ammo_id = NULL, equipped = false, equipped_slot = NULL WHERE id = $1',
+      [itemId]
+    );
+
+    // Now delete the ammo clip from inventory
+    await pool.query('DELETE FROM inventory WHERE id = $1', [ammoId]);
+
+    // If armor was unequipped, recalculate AC
+    let newAC = null;
+    if (wasArmor) {
+      const acData = await calculateAC(characterId);
+      await pool.query('UPDATE characters SET ac = $1 WHERE id = $2', [acData.ac, characterId]);
+      newAC = acData.ac;
+    }
+
+    // Log activity
+    await pool.query(
+      `INSERT INTO activity_log (character_id, action_type, description, admin_user_id)
+       VALUES ($1, 'ammo_expended', $2, $3)`,
+      [characterId, `Ammo clip expended from ${item.item_name}`, req.user.userId]
+    );
+
+    // Emit socket events
+    const io = req.app.get('io');
+    const updateData = {
+      message: `Ammo clip expended from ${item.item_name}`
+    };
+    if (newAC !== null) {
+      updateData.ac = newAC;
+    }
+    io.to(`character_${characterId}`).emit('character_updated', updateData);
+    io.to(`character_${characterId}`).emit('inventory_updated', {
+      message: `Ammo clip expended from ${item.item_name}`
+    });
+    io.emit('admin_refresh'); // Notify admin panel
+
+    res.json({
+      message: 'Ammo clip expended successfully',
+      itemName: item.item_name,
+      ...(newAC !== null && { newAC })
+    });
+  } catch (error) {
+    console.error('Error expending ammo clip:', error);
+    res.status(500).json({ error: 'Failed to expend ammo clip' });
   }
 });
 

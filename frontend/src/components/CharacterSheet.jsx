@@ -96,6 +96,9 @@ function CharacterSheet() {
   const [availableCells, setAvailableCells] = useState([]);
   const [showCellModal, setShowCellModal] = useState(false);
   const [selectedItemForCell, setSelectedItemForCell] = useState(null);
+  const [availableAmmo, setAvailableAmmo] = useState([]);
+  const [showAmmoModal, setShowAmmoModal] = useState(false);
+  const [selectedItemForAmmo, setSelectedItemForAmmo] = useState(null);
   const [showUseConfirm, setShowUseConfirm] = useState(false);
   const [selectedConsumable, setSelectedConsumable] = useState(null);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
@@ -176,6 +179,7 @@ function CharacterSheet() {
     fetchCharacter();
     fetchPartyMembers();
     fetchUnreadCount();
+    fetchAvailableAmmo();
     checkCommunicatorPower();
 
     const newSocket = io(WS_URL);
@@ -217,9 +221,30 @@ function CharacterSheet() {
       fetchPoweredGear(); // Explicitly refresh powered gear
       fetchEquippedGear(); // Explicitly refresh equipped gear
       fetchAvailableCells(); // Explicitly refresh available cells
+      fetchAvailableAmmo(); // Explicitly refresh available ammo
       setTimeout(() => setNotification(''), 5000);
     });
-    
+
+    newSocket.on('equipment_changed', (data) => {
+      if (data.message) {
+        setNotification(data.message);
+        setTimeout(() => setNotification(''), 5000);
+      }
+      fetchCharacter(); // Refresh character data (including AC)
+      fetchEquippedGear(); // Refresh equipped gear
+      fetchPoweredGear(); // Refresh powered gear in case powered armor was equipped/unequipped
+    });
+
+    newSocket.on('item_removed', (data) => {
+      setNotification(data.message);
+      fetchCharacter(); // Refresh character data
+      fetchEquippedGear(); // Refresh equipped gear in case it was removed
+      fetchPoweredGear(); // Refresh powered gear
+      fetchAvailableCells(); // Refresh available cells
+      fetchAvailableAmmo(); // Refresh available ammo
+      setTimeout(() => setNotification(''), 5000);
+    });
+
     newSocket.on('daily_abilities_reset', (data) => {
       setNotification(data.message);
       fetchAbilityUses();
@@ -370,6 +395,15 @@ function CharacterSheet() {
     }
   };
 
+  const fetchAvailableAmmo = async () => {
+    try {
+      const response = await api.get(`${API_URL}/inventory/ammo-clips/available/${id}`);
+      setAvailableAmmo(response.data);
+    } catch (error) {
+      console.error('Error fetching available ammo:', error);
+    }
+  };
+
   const fetchShips = async () => {
     try {
       const response = await api.get(`${API_URL}/player-ships/my-ships`);
@@ -423,6 +457,40 @@ function CharacterSheet() {
     } catch (error) {
       console.error('Error unloading cell:', error);
       setEquipError(error.response?.data?.error || 'Failed to unload energy cell');
+      setTimeout(() => setEquipError(''), 5000);
+    }
+  };
+
+  const handleLoadAmmo = async (ammoId) => {
+    try {
+      setEquipError('');
+      await api.post(
+        `${API_URL}/inventory/load-ammo/${id}/${selectedItemForAmmo.id}`,
+        { ammoClipId: ammoId }
+      );
+      setShowAmmoModal(false);
+      setSelectedItemForAmmo(null);
+      fetchCharacter();
+      fetchAvailableAmmo();
+    } catch (error) {
+      console.error('Error loading ammo:', error);
+      setEquipError(error.response?.data?.error || 'Failed to load ammo');
+      setTimeout(() => setEquipError(''), 5000);
+    }
+  };
+
+  const handleUnloadAmmo = async (itemId) => {
+    try {
+      setEquipError('');
+      await api.post(
+        `${API_URL}/inventory/unload-ammo/${id}/${itemId}`,
+        {}
+      );
+      fetchCharacter();
+      fetchAvailableAmmo();
+    } catch (error) {
+      console.error('Error unloading ammo:', error);
+      setEquipError(error.response?.data?.error || 'Failed to unload ammo');
       setTimeout(() => setEquipError(''), 5000);
     }
   };
@@ -611,6 +679,11 @@ function CharacterSheet() {
     setShowCellModal(true);
   };
 
+  const openLoadAmmoModal = (item) => {
+    setSelectedItemForAmmo(item);
+    setShowAmmoModal(true);
+  };
+
   const openUseConfirm = (item) => {
     setSelectedConsumable(item);
     setShowUseConfirm(true);
@@ -624,17 +697,33 @@ function CharacterSheet() {
   const requiresEnergyCell = (item) => {
     const properties = item.properties || item.full_properties || '';
     const itemName = item.item_name?.toLowerCase() || '';
-    
+
     // Energy cells themselves don't require energy cells!
     if (itemName.includes('energy cell')) {
       return false;
     }
-    
+
     return properties.includes('EC');
   };
 
   const hasEnergyCell = (item) => {
     return item.loaded_energy_cell_id && item.loaded_energy_cell_id > 0;
+  };
+
+  const requiresAmmo = (item) => {
+    const properties = item.properties || item.full_properties || '';
+    const itemName = item.item_name?.toLowerCase() || '';
+
+    // Ammo clips themselves don't require ammo!
+    if (itemName.includes('ammo')) {
+      return false;
+    }
+
+    return properties.includes('Am');
+  };
+
+  const hasAmmo = (item) => {
+    return item.loaded_ammo_id && item.loaded_ammo_id > 0;
   };
   
   const fetchAbilityUses = async () => {
@@ -1536,6 +1625,17 @@ function CharacterSheet() {
                                       )}
                                     </div>
                                   )}
+
+                                  {/* Ammo Status */}
+                                  {requiresAmmo(item) && (
+                                    <div className="text-xs mt-2">
+                                      {hasAmmo(item) ? (
+                                        <span className="text-green-400">🔫 Ammo Loaded ✓</span>
+                                      ) : (
+                                        <span className="text-yellow-400">⚠️ No Ammo</span>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                                 <div className="flex flex-row sm:flex-col flex-wrap gap-2 sm:gap-1 sm:ml-4">
                                   {/* Equip/Unequip buttons */}
@@ -1577,8 +1677,28 @@ function CharacterSheet() {
                                     )
                                   )}
 
-                                  {/* Use button for consumables (not energy cells) */}
-                                  {item.item_type === 'consumable' && !item.item_name.toLowerCase().includes('energy cell') && (
+                                  {/* Ammo Load/Unload buttons */}
+                                  {requiresAmmo(item) && (
+                                    hasAmmo(item) ? (
+                                      <button
+                                      onClick={() => handleUnloadAmmo(item.id)}
+                                      className="text-xs sm:text-sm bg-orange-600 hover:bg-orange-700 px-3 py-2 rounded whitespace-nowrap min-h-[36px] sm:min-h-0 flex-1 sm:flex-none"
+                                      >
+                                      Unload Ammo
+                                      </button>
+                                    ) : (
+                                      <button
+                                      onClick={() => openLoadAmmoModal(item)}
+                                      className="text-xs sm:text-sm bg-cyan-600 hover:bg-cyan-700 px-3 py-2 rounded whitespace-nowrap min-h-[36px] sm:min-h-0 flex-1 sm:flex-none"
+                                      disabled={availableAmmo.length === 0}
+                                      >
+                                      Load Ammo
+                                      </button>
+                                    )
+                                  )}
+
+                                  {/* Use button for consumables (not energy cells or ammo) */}
+                                  {item.item_type === 'consumable' && !item.item_name.toLowerCase().includes('energy cell') && !item.item_name.toLowerCase().includes('ammo') && (
                                     <button
                                       onClick={() => openUseConfirm(item)}
                                       className="text-xs sm:text-sm bg-green-600 hover:bg-green-700 px-3 py-2 rounded whitespace-nowrap min-h-[36px] sm:min-h-0 flex-1 sm:flex-none"
@@ -1588,7 +1708,7 @@ function CharacterSheet() {
                                   )}
 
                                   {/* Gift button - only if not equipped and not loaded */}
-                                  {!item.equipped && !item.in_use_by_item_id && !item.loaded_energy_cell_id && (
+                                  {!item.equipped && !item.in_use_by_item_id && !item.loaded_energy_cell_id && !item.loaded_ammo_id && (
                                     <button
                                       onClick={() => openGiftItem(item)}
                                       className="text-xs sm:text-sm bg-indigo-600 hover:bg-indigo-700 px-3 py-2 rounded whitespace-nowrap min-h-[36px] sm:min-h-0 flex-1 sm:flex-none"
@@ -1600,7 +1720,7 @@ function CharacterSheet() {
                                   )}
 
                                   {/* Discard button - available for all items when not equipped and not loaded */}
-                                  {!item.equipped && !item.in_use_by_item_id && !item.loaded_energy_cell_id && (
+                                  {!item.equipped && !item.in_use_by_item_id && !item.loaded_energy_cell_id && !item.loaded_ammo_id && (
                                     <button
                                       onClick={() => openDiscardConfirm(item)}
                                       className="text-xs sm:text-sm bg-gray-600 hover:bg-gray-700 px-3 py-2 rounded whitespace-nowrap min-h-[36px] sm:min-h-0 flex-1 sm:flex-none"
@@ -1809,6 +1929,46 @@ function CharacterSheet() {
               onClick={() => {
                 setShowCellModal(false);
                 setSelectedItemForCell(null);
+              }}
+              className="w-full bg-gray-600 hover:bg-gray-500 text-white px-4 py-3 rounded text-base min-h-[44px]"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Load Ammo Modal */}
+      {showAmmoModal && selectedItemForAmmo && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-lg p-4 sm:p-6 max-w-md w-full border border-gray-700 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg sm:text-xl font-bold text-white mb-3 sm:mb-4">
+              Load Ammo into {selectedItemForAmmo.item_name}
+            </h2>
+
+            {availableAmmo.length > 0 ? (
+              <div className="space-y-2 mb-4">
+                {availableAmmo.map((ammo) => (
+                  <button
+                    key={ammo.id}
+                    onClick={() => handleLoadAmmo(ammo.id)}
+                    className="w-full bg-gray-700 hover:bg-gray-600 text-white p-3 sm:p-4 rounded text-left transition min-h-[44px]"
+                  >
+                    <div className="font-bold text-base">{ammo.item_name}</div>
+                    <div className="text-sm text-gray-400">Quantity: {ammo.quantity}</div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="text-yellow-400 mb-4">
+                No available ammo clips in inventory!
+              </div>
+            )}
+
+            <button
+              onClick={() => {
+                setShowAmmoModal(false);
+                setSelectedItemForAmmo(null);
               }}
               className="w-full bg-gray-600 hover:bg-gray-500 text-white px-4 py-3 rounded text-base min-h-[44px]"
             >

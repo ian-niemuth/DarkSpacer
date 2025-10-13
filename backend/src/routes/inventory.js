@@ -770,9 +770,17 @@ async function validateEquipment(characterId, itemId, targetSlot) {
 
     // Check if EC gear has energy cell loaded
     if (properties.includes('EC') && !item.loaded_energy_cell_id) {
-      return { 
-        valid: false, 
-        error: 'This item requires an energy cell. Load a cell before equipping.' 
+      return {
+        valid: false,
+        error: 'This item requires an energy cell. Load a cell before equipping.'
+      };
+    }
+
+    // Check if Am weapon has ammo loaded
+    if (properties.includes('Am') && !item.loaded_ammo_id) {
+      return {
+        valid: false,
+        error: 'This weapon requires ammo. Load an ammo clip before equipping.'
       };
     }
 
@@ -1279,6 +1287,8 @@ router.post('/unload-cell/:characterId/:itemId', authenticateToken, async (req, 
     }
 
     const cellId = item.loaded_energy_cell_id;
+    const wasEquipped = item.equipped_slot !== null;
+    const wasArmor = item.equipped_slot && ['body_armor', 'helmet', 'shield'].includes(item.equipped_slot);
 
     // Get the energy cell details
     const cellResult = await pool.query(
@@ -1292,16 +1302,23 @@ router.post('/unload-cell/:characterId/:itemId', authenticateToken, async (req, 
 
     const cell = cellResult.rows[0];
 
-    // Unload the cell from the item
-    await pool.query(
-      'UPDATE inventory SET loaded_energy_cell_id = NULL WHERE id = $1',
-      [itemId]
-    );
+    // Unload the cell from the item AND unequip if it was equipped
+    if (wasEquipped) {
+      await pool.query(
+        'UPDATE inventory SET loaded_energy_cell_id = NULL, equipped = false, equipped_slot = NULL WHERE id = $1',
+        [itemId]
+      );
+    } else {
+      await pool.query(
+        'UPDATE inventory SET loaded_energy_cell_id = NULL WHERE id = $1',
+        [itemId]
+      );
+    }
 
     // Try to merge this cell back into an existing stack
     const existingStackResult = await pool.query(`
-      SELECT id, quantity FROM inventory 
-      WHERE character_id = $1 
+      SELECT id, quantity FROM inventory
+      WHERE character_id = $1
         AND LOWER(item_name) = LOWER($2)
         AND (in_use_by_item_id IS NULL OR in_use_by_item_id = 0)
         AND id != $3
@@ -1314,7 +1331,7 @@ router.post('/unload-cell/:characterId/:itemId', authenticateToken, async (req, 
         'UPDATE inventory SET quantity = quantity + 1 WHERE id = $1',
         [existingStackResult.rows[0].id]
       );
-      
+
       // Delete the single cell
       await pool.query('DELETE FROM inventory WHERE id = $1', [cellId]);
     } else {
@@ -1325,6 +1342,14 @@ router.post('/unload-cell/:characterId/:itemId', authenticateToken, async (req, 
       );
     }
 
+    // If armor was unequipped, recalculate AC
+    let newAC = null;
+    if (wasArmor) {
+      const acData = await calculateAC(characterId);
+      await pool.query('UPDATE characters SET ac = $1 WHERE id = $2', [acData.ac, characterId]);
+      newAC = acData.ac;
+    }
+
     // Log activity
     await pool.query(`
       INSERT INTO activity_log (character_id, action_type, description)
@@ -1333,12 +1358,22 @@ router.post('/unload-cell/:characterId/:itemId', authenticateToken, async (req, 
 
     // Emit socket event
     const io = req.app.get('io');
-    io.to(`character_${characterId}`).emit('character_updated', {
+    const updateData = {
+      message: `Energy cell unloaded from ${item.item_name}${wasEquipped ? ' (item unequipped)' : ''}`
+    };
+    if (newAC !== null) {
+      updateData.ac = newAC;
+    }
+    io.to(`character_${characterId}`).emit('character_updated', updateData);
+    io.to(`character_${characterId}`).emit('inventory_updated', {
       message: `Energy cell unloaded from ${item.item_name}`
     });
     io.emit('admin_refresh'); // Notify admin panel
 
-    res.json({ message: 'Energy cell unloaded successfully' });
+    res.json({
+      message: 'Energy cell unloaded successfully',
+      ...(newAC !== null && { newAC })
+    });
 
   } catch (error) {
     console.error('Error unloading energy cell:', error);
@@ -1462,8 +1497,22 @@ router.post('/gift-item/:characterId/:itemId', authenticateToken, async (req, re
 
     // Check if item has loaded energy cell
     if (item.loaded_energy_cell_id) {
-      return res.status(400).json({ 
-        error: 'This item has a loaded energy cell. Unload it before gifting.' 
+      return res.status(400).json({
+        error: 'This item has a loaded energy cell. Unload it before gifting.'
+      });
+    }
+
+    // Check if item has loaded ammo
+    if (item.loaded_ammo_id) {
+      return res.status(400).json({
+        error: 'This weapon has loaded ammo. Unload it before gifting.'
+      });
+    }
+
+    // Check if ammo clip is loaded in a weapon
+    if (item.item_name.toLowerCase().includes('ammo') && item.in_use_by_item_id) {
+      return res.status(400).json({
+        error: 'This ammo clip is currently loaded in a weapon. Unload it first.'
       });
     }
 
@@ -1655,8 +1704,22 @@ router.delete('/discard/:characterId/:itemId', authenticateToken, async (req, re
 
     // Check if item has loaded energy cell
     if (item.loaded_energy_cell_id) {
-      return res.status(400).json({ 
-        error: 'This item has a loaded energy cell. Unload it before discarding.' 
+      return res.status(400).json({
+        error: 'This item has a loaded energy cell. Unload it before discarding.'
+      });
+    }
+
+    // Check if item has loaded ammo
+    if (item.loaded_ammo_id) {
+      return res.status(400).json({
+        error: 'This weapon has loaded ammo. Unload it before discarding.'
+      });
+    }
+
+    // Check if ammo clip is loaded in a weapon
+    if (item.item_name.toLowerCase().includes('ammo') && item.in_use_by_item_id) {
+      return res.status(400).json({
+        error: 'This ammo clip is currently loaded in a weapon. Unload it first.'
       });
     }
 
@@ -1793,6 +1856,355 @@ router.post('/use-consumable/:characterId/:itemId', authenticateToken, async (re
   } catch (error) {
     console.error('Error using consumable:', error);
     res.status(500).json({ error: 'Failed to use consumable' });
+  }
+});
+
+// ============================================
+// AMMO LOADING SYSTEM
+// ============================================
+
+// GET - Get available (unloaded) ammo clips for a character
+router.get('/ammo-clips/available/:characterId', authenticateToken, async (req, res) => {
+  const { characterId } = req.params;
+
+  try {
+    // Verify ownership
+    const charResult = await pool.query(
+      'SELECT user_id FROM characters WHERE id = $1',
+      [characterId]
+    );
+
+    if (charResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    if (charResult.rows[0].user_id !== req.user.userId && !req.user.isAdmin) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Get all ammo clips that are NOT currently loaded in weapons
+    const clips = await pool.query(`
+      SELECT * FROM inventory
+      WHERE character_id = $1
+        AND LOWER(item_name) LIKE '%ammo%'
+        AND (in_use_by_item_id IS NULL OR in_use_by_item_id = 0)
+        AND quantity > 0
+      ORDER BY id
+    `, [characterId]);
+
+    res.json(clips.rows);
+
+  } catch (error) {
+    console.error('Error fetching available ammo clips:', error);
+    res.status(500).json({ error: 'Failed to fetch ammo clips' });
+  }
+});
+
+// POST - Load ammo clip into weapon
+router.post('/load-ammo/:characterId/:itemId', authenticateToken, async (req, res) => {
+  const { characterId, itemId } = req.params;
+  const { ammoClipId } = req.body;
+
+  try {
+    // Verify ownership
+    const charResult = await pool.query(
+      'SELECT user_id FROM characters WHERE id = $1',
+      [characterId]
+    );
+
+    if (charResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    if (charResult.rows[0].user_id !== req.user.userId && !req.user.isAdmin) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Verify the item belongs to character and has Am property
+    const itemResult = await pool.query(`
+      SELECT i.*, g.properties
+      FROM inventory i
+      LEFT JOIN gear_database g ON LOWER(i.item_name) = LOWER(g.name)
+      WHERE i.id = $1 AND i.character_id = $2
+    `, [itemId, characterId]);
+
+    if (itemResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    const item = itemResult.rows[0];
+    const properties = item.properties || '';
+
+    // Prevent loading ammo into ammo
+    if (item.item_name.toLowerCase().includes('ammo')) {
+      return res.status(400).json({ error: 'Cannot load ammo clips into other ammo clips' });
+    }
+
+    if (!properties.includes('Am')) {
+      return res.status(400).json({ error: 'This weapon does not require ammo' });
+    }
+
+    // Check if item already has ammo loaded
+    if (item.loaded_ammo_id) {
+      return res.status(400).json({ error: 'This weapon already has ammo loaded. Unload it first.' });
+    }
+
+    // Verify the ammo clip exists and is available
+    const clipResult = await pool.query(
+      'SELECT * FROM inventory WHERE id = $1 AND character_id = $2 AND LOWER(item_name) LIKE \'%ammo%\'',
+      [ammoClipId, characterId]
+    );
+
+    if (clipResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Ammo clip not found' });
+    }
+
+    const clip = clipResult.rows[0];
+
+    if (clip.in_use_by_item_id && clip.in_use_by_item_id !== 0) {
+      return res.status(400).json({ error: 'This ammo clip is already loaded in another weapon' });
+    }
+
+    // Handle stacked ammo clips: split off one clip for loading
+    let actualClipId = ammoClipId;
+
+    if (clip.quantity > 1) {
+      // Reduce the quantity of the original stack
+      await pool.query(
+        'UPDATE inventory SET quantity = quantity - 1 WHERE id = $1',
+        [ammoClipId]
+      );
+
+      // Create a new inventory row for the single clip being loaded
+      const newClipResult = await pool.query(`
+        INSERT INTO inventory (
+          character_id, item_name, item_type, description,
+          weight, quantity, damage, range, properties, in_use_by_item_id
+        )
+        VALUES ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9)
+        RETURNING id
+      `, [
+        characterId,
+        clip.item_name,
+        clip.item_type,
+        clip.description,
+        clip.weight,
+        clip.damage,
+        clip.range,
+        clip.properties,
+        itemId
+      ]);
+
+      actualClipId = newClipResult.rows[0].id;
+    } else {
+      // Single clip, just mark it as in use
+      await pool.query(
+        'UPDATE inventory SET in_use_by_item_id = $1 WHERE id = $2',
+        [itemId, ammoClipId]
+      );
+    }
+
+    // Load the clip into the weapon
+    await pool.query(
+      'UPDATE inventory SET loaded_ammo_id = $1 WHERE id = $2',
+      [actualClipId, itemId]
+    );
+
+    // Log activity
+    await pool.query(`
+      INSERT INTO activity_log (character_id, action_type, description)
+      VALUES ($1, 'ammo_loaded', $2)
+    `, [characterId, `Loaded ammo into ${item.item_name}`]);
+
+    // Emit socket event
+    const io = req.app.get('io');
+    io.to(`character_${characterId}`).emit('character_updated', {
+      message: `Ammo loaded into ${item.item_name}!`
+    });
+    io.emit('admin_refresh'); // Notify admin panel
+
+    res.json({ message: 'Ammo loaded successfully' });
+
+  } catch (error) {
+    console.error('Error loading ammo:', error);
+    res.status(500).json({ error: 'Failed to load ammo' });
+  }
+});
+
+// POST - Unload ammo clip from weapon
+router.post('/unload-ammo/:characterId/:itemId', authenticateToken, async (req, res) => {
+  const { characterId, itemId } = req.params;
+
+  try {
+    // Verify ownership
+    const charResult = await pool.query(
+      'SELECT user_id FROM characters WHERE id = $1',
+      [characterId]
+    );
+
+    if (charResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    if (charResult.rows[0].user_id !== req.user.userId && !req.user.isAdmin) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Get the item with loaded ammo
+    const itemResult = await pool.query(
+      'SELECT * FROM inventory WHERE id = $1 AND character_id = $2',
+      [itemId, characterId]
+    );
+
+    if (itemResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    const item = itemResult.rows[0];
+
+    if (!item.loaded_ammo_id) {
+      return res.status(400).json({ error: 'No ammo loaded in this weapon' });
+    }
+
+    const clipId = item.loaded_ammo_id;
+    const wasEquipped = item.equipped_slot !== null;
+    const wasArmor = item.equipped_slot && ['body_armor', 'helmet', 'shield'].includes(item.equipped_slot);
+
+    // Get the ammo clip details
+    const clipResult = await pool.query(
+      'SELECT * FROM inventory WHERE id = $1',
+      [clipId]
+    );
+
+    if (clipResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Loaded ammo clip not found' });
+    }
+
+    const clip = clipResult.rows[0];
+
+    // Unload the clip from the weapon AND unequip if it was equipped
+    if (wasEquipped) {
+      await pool.query(
+        'UPDATE inventory SET loaded_ammo_id = NULL, equipped = false, equipped_slot = NULL WHERE id = $1',
+        [itemId]
+      );
+    } else {
+      await pool.query(
+        'UPDATE inventory SET loaded_ammo_id = NULL WHERE id = $1',
+        [itemId]
+      );
+    }
+
+    // Try to merge this clip back into an existing stack
+    const existingStackResult = await pool.query(`
+      SELECT id, quantity FROM inventory
+      WHERE character_id = $1
+        AND LOWER(item_name) = LOWER($2)
+        AND (in_use_by_item_id IS NULL OR in_use_by_item_id = 0)
+        AND id != $3
+      LIMIT 1
+    `, [characterId, clip.item_name, clipId]);
+
+    if (existingStackResult.rows.length > 0) {
+      // Merge back into existing stack
+      await pool.query(
+        'UPDATE inventory SET quantity = quantity + 1 WHERE id = $1',
+        [existingStackResult.rows[0].id]
+      );
+
+      // Delete the single clip
+      await pool.query('DELETE FROM inventory WHERE id = $1', [clipId]);
+    } else {
+      // No stack to merge into, just mark this clip as available
+      await pool.query(
+        'UPDATE inventory SET in_use_by_item_id = NULL WHERE id = $1',
+        [clipId]
+      );
+    }
+
+    // If armor was unequipped, recalculate AC
+    let newAC = null;
+    if (wasArmor) {
+      const acData = await calculateAC(characterId);
+      await pool.query('UPDATE characters SET ac = $1 WHERE id = $2', [acData.ac, characterId]);
+      newAC = acData.ac;
+    }
+
+    // Log activity
+    await pool.query(`
+      INSERT INTO activity_log (character_id, action_type, description)
+      VALUES ($1, 'ammo_unloaded', $2)
+    `, [characterId, `Unloaded ammo from ${item.item_name}`]);
+
+    // Emit socket event
+    const io = req.app.get('io');
+    const updateData = {
+      message: `Ammo unloaded from ${item.item_name}${wasEquipped ? ' (item unequipped)' : ''}`
+    };
+    if (newAC !== null) {
+      updateData.ac = newAC;
+    }
+    io.to(`character_${characterId}`).emit('character_updated', updateData);
+    io.to(`character_${characterId}`).emit('inventory_updated', {
+      message: `Ammo unloaded from ${item.item_name}`
+    });
+    io.emit('admin_refresh'); // Notify admin panel
+
+    res.json({
+      message: 'Ammo unloaded successfully',
+      ...(newAC !== null && { newAC })
+    });
+
+  } catch (error) {
+    console.error('Error unloading ammo:', error);
+    res.status(500).json({ error: 'Failed to unload ammo' });
+  }
+});
+
+// GET - Get weapons that need ammo and their ammo status
+router.get('/ammo-weapons/:characterId', authenticateToken, async (req, res) => {
+  const { characterId } = req.params;
+
+  try {
+    // Verify ownership
+    const charResult = await pool.query(
+      'SELECT user_id FROM characters WHERE id = $1',
+      [characterId]
+    );
+
+    if (charResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    if (charResult.rows[0].user_id !== req.user.userId && !req.user.isAdmin) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Get all weapons with 'Am' property and their loaded ammo status (but NOT ammo clips themselves)
+    const ammoWeapons = await pool.query(`
+      SELECT
+        i.*,
+        g.properties,
+        ammo.item_name as loaded_ammo_name
+      FROM inventory i
+      LEFT JOIN gear_database g ON LOWER(i.item_name) = LOWER(g.name)
+      LEFT JOIN inventory ammo ON i.loaded_ammo_id = ammo.id
+      WHERE i.character_id = $1
+        AND g.properties LIKE '%Am%'
+        AND LOWER(i.item_name) NOT LIKE '%ammo%'
+      ORDER BY
+        CASE i.item_type
+          WHEN 'weapon' THEN 1
+          ELSE 2
+        END,
+        i.item_name
+    `, [characterId]);
+
+    res.json(ammoWeapons.rows);
+
+  } catch (error) {
+    console.error('Error fetching ammo weapons:', error);
+    res.status(500).json({ error: 'Failed to fetch ammo weapons' });
   }
 });
 

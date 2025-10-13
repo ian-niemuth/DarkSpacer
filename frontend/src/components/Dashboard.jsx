@@ -872,7 +872,30 @@ function CreateCharacterModal({ onClose, onCreated }) {
                                 <div className="text-xs text-gray-300 whitespace-pre-line">{ability.description}</div>
                               </div>
                             ))}
-                            
+
+                            {/* Talent Table */}
+                            <div className="mt-4 pt-3 border-t border-gray-600">
+                              <div className="text-sm font-bold text-white mb-2">📋 Talent Table (2d6):</div>
+                              <div className="space-y-1">
+                                {data.talentTable.map((talent, idx) => {
+                                  const rollDisplay = Array.isArray(talent.roll)
+                                    ? `${talent.roll[0]}-${talent.roll[1]}`
+                                    : talent.roll;
+                                  return (
+                                    <div key={idx} className="text-xs bg-gray-800 rounded p-2">
+                                      <div className="flex items-start gap-2">
+                                        <span className="text-yellow-400 font-bold min-w-[32px]">{rollDisplay}</span>
+                                        <div className="flex-1">
+                                          <span className="text-blue-300 font-semibold">{talent.result}</span>
+                                          <div className="text-gray-400 mt-0.5">{talent.description}</div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
                             {/* Triad Choice for Wise */}
                             {name === 'Wise' && (
                               <div className="mt-4 p-3 bg-purple-900 bg-opacity-30 border border-purple-600 rounded">

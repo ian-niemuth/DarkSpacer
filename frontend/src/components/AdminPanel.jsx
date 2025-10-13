@@ -191,6 +191,23 @@ function AdminPanel() {
     }
   };
 
+  const handleExpendAmmo = async (characterId, itemId, itemName) => {
+    if (!confirm(`Expend the ammo clip from ${itemName}? This will permanently delete the ammo clip.`)) {
+      return;
+    }
+
+    try {
+      await api.delete(`${API_URL}/admin/characters/${characterId}/ammo/${itemId}`);
+      setActionResult(`✅ Ammo clip expended from ${itemName}`);
+      fetchAllCharacters();
+      setTimeout(() => setActionResult(''), 3000);
+    } catch (error) {
+      console.error('Error expending ammo:', error);
+      setActionResult('❌ Failed to expend ammo');
+      setTimeout(() => setActionResult(''), 3000);
+    }
+  };
+
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -491,6 +508,8 @@ function AdminPanel() {
                           {char.equipped_gear.map((item, idx) => {
                             const requiresCell = item.properties && item.properties.includes('EC');
                             const hasCell = item.loaded_energy_cell_id && item.loaded_energy_cell_id > 0;
+                            const requiresAmmo = item.properties && item.properties.includes('Am');
+                            const hasAmmo = item.loaded_ammo_id && item.loaded_ammo_id > 0;
 
                             return (
                               <div key={idx} className="flex justify-between items-center text-xs text-gray-300">
@@ -509,16 +528,34 @@ function AdminPanel() {
                                       <span className="text-yellow-400"> • ⚠️</span>
                                     )
                                   )}
+                                  {requiresAmmo && (
+                                    hasAmmo ? (
+                                      <span className="text-green-400"> • 🔫</span>
+                                    ) : (
+                                      <span className="text-yellow-400"> • ⚠️</span>
+                                    )
+                                  )}
                                 </div>
-                                {requiresCell && hasCell && (
-                                  <button
-                                    onClick={() => handleExpendEnergyCell(char.id, item.id, item.item_name)}
-                                    className="bg-orange-600 hover:bg-orange-700 text-white px-2 py-0.5 rounded text-xs font-bold"
-                                    title="Expend energy cell"
-                                  >
-                                    🔥 Expend
-                                  </button>
-                                )}
+                                <div className="flex gap-1">
+                                  {requiresCell && hasCell && (
+                                    <button
+                                      onClick={() => handleExpendEnergyCell(char.id, item.id, item.item_name)}
+                                      className="bg-orange-600 hover:bg-orange-700 text-white px-2 py-0.5 rounded text-xs font-bold"
+                                      title="Expend energy cell"
+                                    >
+                                      🔥 EC
+                                    </button>
+                                  )}
+                                  {requiresAmmo && hasAmmo && (
+                                    <button
+                                      onClick={() => handleExpendAmmo(char.id, item.id, item.item_name)}
+                                      className="bg-red-600 hover:bg-red-700 text-white px-2 py-0.5 rounded text-xs font-bold"
+                                      title="Expend ammo clip"
+                                    >
+                                      🔥 Ammo
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             );
                           })}
@@ -556,6 +593,48 @@ function AdminPanel() {
                                       onClick={() => handleExpendEnergyCell(char.id, item.id, item.item_name)}
                                       className="bg-orange-600 hover:bg-orange-700 text-white px-2 py-0.5 rounded text-xs font-bold"
                                       title="Expend energy cell"
+                                    >
+                                      🔥
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </details>
+                      </div>
+                    )}
+
+                    {/* Ammo Weapons Status (All Am items) */}
+                    {char.ammo_weapons && char.ammo_weapons.length > 0 && (
+                      <div className="mb-3 pb-3 border-b border-gray-700">
+                        <details className="group">
+                          <summary className="text-xs font-bold text-gray-400 mb-1 cursor-pointer hover:text-gray-300 list-none flex items-center">
+                            <span className="mr-1 inline-block transform group-open:rotate-90 transition-transform">▶</span>
+                            AMMO WEAPONS ({char.ammo_weapons.length})
+                          </summary>
+                          <div className="space-y-1 mt-2">
+                            {char.ammo_weapons.map((item, idx) => {
+                              const hasAmmo = item.loaded_ammo_id && item.loaded_ammo_id > 0;
+
+                              return (
+                                <div key={idx} className="flex justify-between items-center text-xs">
+                                  <div className="flex items-center gap-2">
+                                    <span className={item.equipped ? 'text-white font-semibold' : 'text-gray-400'}>
+                                      {item.item_name}
+                                    </span>
+                                    {item.equipped && <span className="text-blue-400 text-xs">[E]</span>}
+                                    {hasAmmo ? (
+                                      <span className="text-green-400 font-bold">🔫 Loaded</span>
+                                    ) : (
+                                      <span className="text-yellow-400">⚠️ Empty</span>
+                                    )}
+                                  </div>
+                                  {hasAmmo && (
+                                    <button
+                                      onClick={() => handleExpendAmmo(char.id, item.id, item.item_name)}
+                                      className="bg-red-600 hover:bg-red-700 text-white px-2 py-0.5 rounded text-xs font-bold"
+                                      title="Expend ammo clip"
                                     >
                                       🔥
                                     </button>
