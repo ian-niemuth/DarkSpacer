@@ -15,8 +15,7 @@ export default defineConfig({
       output: {
         // Create separate chunks for better caching
         manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          ui: ['lucide-react']
+          vendor: ['react', 'react-dom', 'react-router-dom']
         },
         // Add content hash to all asset filenames for cache busting
         entryFileNames: 'assets/[name].[hash].js',
