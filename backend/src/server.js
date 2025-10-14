@@ -52,6 +52,18 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' })); // Limit payload size
 app.use(apiLimiter); // Apply rate limiting to all routes
 
+// Add cache control headers for API responses
+app.use('/api', (req, res, next) => {
+  // Prevent caching of API responses
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store'
+  });
+  next();
+});
+
 app.set('io', io);
 
 app.use('/api/auth', authRoutes);
