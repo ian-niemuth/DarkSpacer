@@ -1602,11 +1602,12 @@ function CharacterSheet() {
 
                                   <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
                                     <span>
-                                      {slotsUsed === 0 ? 'FREE' : 
+                                      {slotsUsed === 0 ? 'FREE' :
                                        weight < 1 ? `${slotsUsed} slots (2 per slot)` :
-                                       weight > 1 ? `${weight} slots each` : 
+                                       weight > 1 ? `${weight} slots each` :
                                        `${slotsUsed} slot${slotsUsed !== 1 ? 's' : ''}`}
                                     </span>
+                                    {item.cost !== null && item.cost !== undefined && <span className="text-yellow-500">• {item.cost}cr</span>}
                                     {item.damage && <span>• Damage: {item.damage}</span>}
                                     {item.range && <span>• Range: {item.range}</span>}
                                   </div>
@@ -1776,8 +1777,11 @@ function CharacterSheet() {
                                   {item.description && (
                                     <div className="text-sm text-gray-400 mt-1">{item.description}</div>
                                   )}
-                                  <div className="text-xs text-gray-500 mt-1">
-                                    {slotsUsed === 0 ? 'FREE' : `${slotsUsed} slot${slotsUsed !== 1 ? 's' : ''}`}
+                                  <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                                    <span>
+                                      {slotsUsed === 0 ? 'FREE' : `${slotsUsed} slot${slotsUsed !== 1 ? 's' : ''}`}
+                                    </span>
+                                    {item.cost !== null && item.cost !== undefined && <span className="text-yellow-500">• {item.cost}cr</span>}
                                   </div>
 
                                   {/* Energy Cell Status */}

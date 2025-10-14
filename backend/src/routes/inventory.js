@@ -568,7 +568,7 @@ router.delete('/custom-item/:itemId', authenticateToken, isAdmin, async (req, re
 router.get('/custom-items', authenticateToken, isAdmin, async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT 
+      SELECT
         g.*,
         COUNT(DISTINCT i.id) as usage_count,
         ARRAY_REMOVE(ARRAY_AGG(DISTINCT c.name), NULL) as used_by_characters
@@ -583,6 +583,113 @@ router.get('/custom-items', authenticateToken, isAdmin, async (req, res) => {
   } catch (error) {
     console.error('Error fetching custom items:', error);
     res.status(500).json({ error: 'Failed to fetch custom items' });
+  }
+});
+
+// PUT - Update custom item in gear database
+router.put('/custom-item/:itemId', authenticateToken, isAdmin, async (req, res) => {
+  const { itemId } = req.params;
+  const {
+    name,
+    category,
+    subcategory,
+    cost,
+    weight,
+    damage,
+    range,
+    properties,
+    description,
+    weapon_type,
+    weapon_weight_class,
+    armor_type,
+    hands_required,
+    allows_dex_modifier
+  } = req.body;
+
+  try {
+    // Check if item exists
+    const itemResult = await pool.query(
+      'SELECT * FROM gear_database WHERE id = $1',
+      [itemId]
+    );
+
+    if (itemResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Item not found in gear database' });
+    }
+
+    const item = itemResult.rows[0];
+
+    // Only allow updating custom items
+    if (!item.is_custom) {
+      return res.status(403).json({ error: 'Cannot edit non-custom items. Only custom items can be modified.' });
+    }
+
+    // Validation: weapons must have weapon_type and weapon_weight_class
+    if (category === 'weapon') {
+      if (!weapon_type) {
+        return res.status(400).json({ error: 'Weapons must have a weapon_type (melee or ranged)' });
+      }
+      if (weapon_weight_class === undefined) {
+        return res.status(400).json({ error: 'Weapons must have a weight_class (light, standard/null, or heavy)' });
+      }
+    }
+
+    // Validation: armor must have armor_type
+    if (category === 'armor') {
+      if (!armor_type) {
+        return res.status(400).json({ error: 'Armor must have an armor_type (light, medium, heavy, energy, helmet, or shield)' });
+      }
+    }
+
+    // Set default AC bonus for armor based on type
+    let acBonus = null;
+    if (armor_type) {
+      switch (armor_type) {
+        case 'light': acBonus = 11; break;
+        case 'medium': acBonus = 13; break;
+        case 'heavy': acBonus = 15; break;
+        case 'energy': acBonus = 15; break;
+        case 'helmet': acBonus = 1; break;
+        case 'shield': acBonus = 2; break;
+      }
+    }
+
+    const result = await pool.query(`
+      UPDATE gear_database
+      SET name = $1,
+          category = $2,
+          subcategory = $3,
+          cost = $4,
+          weight = $5,
+          damage = $6,
+          range = $7,
+          properties = $8,
+          description = $9,
+          weapon_type = $10,
+          weapon_weight_class = $11,
+          armor_type = $12,
+          hands_required = $13,
+          allows_dex_modifier = $14,
+          ac_bonus = $15
+      WHERE id = $16
+      RETURNING *
+    `, [
+      name, category, subcategory, cost, weight, damage, range, properties, description,
+      weapon_type, weapon_weight_class, armor_type, hands_required, allows_dex_modifier, acBonus, itemId
+    ]);
+
+    res.json({
+      message: 'Custom item updated successfully',
+      item: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Error updating custom item:', error);
+    console.error('Error details:', error.message);
+    res.status(500).json({
+      error: 'Failed to update custom item',
+      details: error.message
+    });
   }
 });
 
@@ -610,20 +717,36 @@ router.get('/:characterId', authenticateToken, async (req, res) => {
     }
 
     // Get inventory with calculated weights and archetype info
+    // Use gear_database as source of truth for item stats, falling back to inventory copy
     const inventory = await pool.query(`
-      SELECT 
-        i.*,
-        COALESCE(g.weight, 1) as actual_weight,
-        g.properties as full_properties,
+      SELECT
+        i.id,
+        i.character_id,
+        i.item_name,
+        i.quantity,
+        i.equipped,
+        i.equipped_slot,
+        i.loaded_energy_cell_id,
+        i.loaded_ammo_id,
+        i.in_use_by_item_id,
+        COALESCE(g.category, i.item_type) as item_type,
+        COALESCE(g.description, i.description) as description,
+        COALESCE(g.weight, i.weight, 1) as weight,
+        COALESCE(g.weight, i.weight, 1) as actual_weight,
+        COALESCE(g.damage, i.damage) as damage,
+        COALESCE(g.range, i.range) as range,
+        COALESCE(g.properties, i.properties) as properties,
+        COALESCE(g.properties, i.properties) as full_properties,
         g.weapon_type,
         g.weapon_weight_class,
         g.armor_type,
         g.subcategory,
-        g.hands_required
+        g.hands_required,
+        g.cost
       FROM inventory i
       LEFT JOIN gear_database g ON LOWER(i.item_name) = LOWER(g.name)
       WHERE i.character_id = $1
-      ORDER BY i.item_type, i.item_name
+      ORDER BY COALESCE(g.category, i.item_type), i.item_name
     `, [characterId]);
 
     // Add canEquip flag to each item
@@ -640,6 +763,15 @@ router.get('/:characterId', authenticateToken, async (req, res) => {
 
     const slotsUsed = await calculateSlotsUsed(characterId);
     const maxSlots = await getMaxSlots(characterId);
+
+    // DEBUG: Log first item to check cost field
+    if (enrichedInventory.length > 0) {
+      console.log('📦 DEBUG - First inventory item:', {
+        name: enrichedInventory[0].item_name,
+        cost: enrichedInventory[0].cost,
+        hasCost: enrichedInventory[0].cost !== null && enrichedInventory[0].cost !== undefined
+      });
+    }
 
     res.json({
       inventory: enrichedInventory,

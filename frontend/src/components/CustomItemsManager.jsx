@@ -9,7 +9,8 @@ function CustomItemsManager() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
-  
+  const [editingItem, setEditingItem] = useState(null);
+
   // Form state
   const [formData, setFormData] = useState({
     name: '',
@@ -125,15 +126,105 @@ function CustomItemsManager() {
       const response = await axios.delete(`${API_URL}/inventory/custom-item/${itemId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
+
       setSuccess(response.data.message);
       setError('');
       fetchCustomItems();
-      
+
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       console.error('Error deleting custom item:', err);
       setError(err.response?.data?.error || 'Failed to delete item');
+      setSuccess('');
+    }
+  };
+
+  const startEditItem = (item) => {
+    setEditingItem(item);
+    setFormData({
+      name: item.name || '',
+      category: item.category || 'gear',
+      subcategory: item.subcategory || '',
+      cost: item.cost !== null ? String(item.cost) : '',
+      weight: item.weight !== null ? String(item.weight) : '1',
+      damage: item.damage || '',
+      range: item.range || '',
+      properties: item.properties || '',
+      description: item.description || '',
+      weapon_type: item.weapon_type || '',
+      weapon_weight_class: item.weapon_weight_class !== null ? item.weapon_weight_class : '',
+      armor_type: item.armor_type || '',
+      hands_required: item.hands_required ? String(item.hands_required) : '1',
+      allows_dex_modifier: item.allows_dex_modifier !== null ? String(item.allows_dex_modifier) : 'true'
+    });
+    setShowCreateForm(true);
+    setError('');
+    setSuccess('');
+  };
+
+  const handleEditItem = async (e) => {
+    e.preventDefault();
+
+    if (!editingItem) return;
+
+    // Validation
+    if (!formData.name.trim()) {
+      setError('Item name is required');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+
+      // Prepare data - convert empty strings to null
+      const itemData = {
+        ...formData,
+        cost: formData.cost ? parseInt(formData.cost) : null,
+        weight: formData.weight ? parseFloat(formData.weight) : 1,
+        damage: formData.damage || null,
+        range: formData.range || null,
+        properties: formData.properties || null,
+        description: formData.description || null,
+        weapon_type: formData.weapon_type || null,
+        weapon_weight_class: formData.weapon_weight_class || null,
+        armor_type: formData.armor_type || null,
+        hands_required: formData.hands_required ? parseInt(formData.hands_required) : 1,
+        allows_dex_modifier: formData.allows_dex_modifier === 'true'
+      };
+
+      await axios.put(`${API_URL}/inventory/custom-item/${editingItem.id}`, itemData, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      setSuccess(`✅ Updated "${formData.name}" successfully!`);
+      setError('');
+
+      // Reset form and edit state
+      setFormData({
+        name: '',
+        category: 'gear',
+        subcategory: '',
+        cost: '',
+        weight: '1',
+        damage: '',
+        range: '',
+        properties: '',
+        description: '',
+        weapon_type: '',
+        weapon_weight_class: '',
+        armor_type: '',
+        hands_required: '1',
+        allows_dex_modifier: 'true'
+      });
+
+      setShowCreateForm(false);
+      setEditingItem(null);
+      fetchCustomItems();
+
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      console.error('Error updating custom item:', err);
+      setError(err.response?.data?.error || 'Failed to update item');
       setSuccess('');
     }
   };
@@ -158,7 +249,31 @@ function CustomItemsManager() {
             </p>
           </div>
           <button
-            onClick={() => setShowCreateForm(!showCreateForm)}
+            onClick={() => {
+              if (showCreateForm) {
+                setShowCreateForm(false);
+                setEditingItem(null);
+                setFormData({
+                  name: '',
+                  category: 'gear',
+                  subcategory: '',
+                  cost: '',
+                  weight: '1',
+                  damage: '',
+                  range: '',
+                  properties: '',
+                  description: '',
+                  weapon_type: '',
+                  weapon_weight_class: '',
+                  armor_type: '',
+                  hands_required: '1',
+                  allows_dex_modifier: 'true'
+                });
+              } else {
+                setShowCreateForm(true);
+                setEditingItem(null);
+              }
+            }}
             className={`px-6 py-3 rounded font-bold transition ${
               showCreateForm
                 ? 'bg-gray-600 hover:bg-gray-700 text-white'
@@ -183,10 +298,12 @@ function CustomItemsManager() {
         )}
       </div>
 
-      {/* Create Item Form */}
+      {/* Create/Edit Item Form */}
       {showCreateForm && (
-        <div className="bg-gray-800 rounded-lg p-6 border border-green-600">
-          <h3 className="text-xl font-bold text-white mb-4">Create New Custom Item</h3>
+        <div className={`bg-gray-800 rounded-lg p-6 border ${editingItem ? 'border-blue-600' : 'border-green-600'}`}>
+          <h3 className="text-xl font-bold text-white mb-4">
+            {editingItem ? `✏️ Edit "${editingItem.name}"` : 'Create New Custom Item'}
+          </h3>
           
           {/* Archetype Restrictions Info */}
           <div className="mb-4 p-4 bg-blue-900 bg-opacity-30 border border-blue-600 rounded">
@@ -206,7 +323,7 @@ function CustomItemsManager() {
             </div>
           </div>
           
-          <form onSubmit={handleCreateItem} className="space-y-4">
+          <form onSubmit={editingItem ? handleEditItem : handleCreateItem} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Name */}
               <div className="md:col-span-2">
@@ -469,13 +586,36 @@ function CustomItemsManager() {
             <div className="flex gap-3 pt-4">
               <button
                 type="submit"
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded"
+                className={`flex-1 ${
+                  editingItem
+                    ? 'bg-blue-600 hover:bg-blue-700'
+                    : 'bg-green-600 hover:bg-green-700'
+                } text-white font-bold py-3 px-6 rounded`}
               >
-                ✓ Create Item
+                {editingItem ? '✓ Update Item' : '✓ Create Item'}
               </button>
               <button
                 type="button"
-                onClick={() => setShowCreateForm(false)}
+                onClick={() => {
+                  setShowCreateForm(false);
+                  setEditingItem(null);
+                  setFormData({
+                    name: '',
+                    category: 'gear',
+                    subcategory: '',
+                    cost: '',
+                    weight: '1',
+                    damage: '',
+                    range: '',
+                    properties: '',
+                    description: '',
+                    weapon_type: '',
+                    weapon_weight_class: '',
+                    armor_type: '',
+                    hands_required: '1',
+                    allows_dex_modifier: 'true'
+                  });
+                }}
                 className="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded font-bold"
               >
                 Cancel
@@ -667,23 +807,32 @@ function CustomItemsManager() {
                     </div>
                   </div>
 
-                  {/* Delete Button */}
-                  <button
-                    onClick={() => handleDeleteItem(item.id, item.name)}
-                    disabled={parseInt(item.usage_count) > 0}
-                    className={`ml-4 px-4 py-2 rounded font-bold transition ${
-                      parseInt(item.usage_count) > 0
-                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                        : 'bg-red-600 hover:bg-red-700 text-white'
-                    }`}
-                    title={
-                      parseInt(item.usage_count) > 0
-                        ? 'Cannot delete - remove from all inventories first'
-                        : 'Delete this custom item'
-                    }
-                  >
-                    🗑️ Delete
-                  </button>
+                  {/* Edit and Delete Buttons */}
+                  <div className="ml-4 flex gap-2">
+                    <button
+                      onClick={() => startEditItem(item)}
+                      className="px-4 py-2 rounded font-bold bg-blue-600 hover:bg-blue-700 text-white transition"
+                      title="Edit this custom item"
+                    >
+                      ✏️ Edit
+                    </button>
+                    <button
+                      onClick={() => handleDeleteItem(item.id, item.name)}
+                      disabled={parseInt(item.usage_count) > 0}
+                      className={`px-4 py-2 rounded font-bold transition ${
+                        parseInt(item.usage_count) > 0
+                          ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                          : 'bg-red-600 hover:bg-red-700 text-white'
+                      }`}
+                      title={
+                        parseInt(item.usage_count) > 0
+                          ? 'Cannot delete - remove from all inventories first'
+                          : 'Delete this custom item'
+                      }
+                    >
+                      🗑️ Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

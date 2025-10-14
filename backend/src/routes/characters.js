@@ -83,10 +83,30 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Character not found' });
     }
     
-    const inventory = await pool.query(
-      'SELECT * FROM inventory WHERE character_id = $1 ORDER BY item_type, item_name',
-      [id]
-    );
+    // Get inventory with fresh data from gear_database (same pattern as inventory route)
+    const inventory = await pool.query(`
+      SELECT
+        i.id,
+        i.character_id,
+        i.item_name,
+        i.quantity,
+        i.equipped,
+        i.equipped_slot,
+        i.loaded_energy_cell_id,
+        i.loaded_ammo_id,
+        i.in_use_by_item_id,
+        COALESCE(g.category, i.item_type) as item_type,
+        COALESCE(g.description, i.description) as description,
+        COALESCE(g.weight, i.weight, 1) as weight,
+        COALESCE(g.damage, i.damage) as damage,
+        COALESCE(g.range, i.range) as range,
+        COALESCE(g.properties, i.properties) as properties,
+        g.cost
+      FROM inventory i
+      LEFT JOIN gear_database g ON LOWER(i.item_name) = LOWER(g.name)
+      WHERE i.character_id = $1
+      ORDER BY COALESCE(g.category, i.item_type), i.item_name
+    `, [id]);
     
     const shipData = await pool.query(
       `SELECT s.*, sc.role as crew_role 
