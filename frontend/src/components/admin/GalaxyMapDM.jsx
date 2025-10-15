@@ -165,6 +165,7 @@ function GalaxyMapDM() {
             allShips={allShips}
             dmPositioningMode={positioningMode}
             onMapClick={handleMapClick}
+            enablePlanetSearch={true}
           />
         ) : (
           <div className="flex items-center justify-center h-full">

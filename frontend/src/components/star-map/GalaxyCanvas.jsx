@@ -10,7 +10,8 @@ function GalaxyCanvas({
   showAllShips = false,
   allShips = [],
   dmPositioningMode = false,
-  onMapClick = null
+  onMapClick = null,
+  enablePlanetSearch = false
 }) {
   const canvasRef = useRef(null);
   const dragStartRef = useRef({ x: 0, y: 0 }); // Track drag start position immediately
@@ -191,6 +192,33 @@ function GalaxyCanvas({
         coordinates: system.coordinates
       });
     });
+
+    // Add planets if planet search is enabled (DM view only)
+    if (enablePlanetSearch && galaxyData.stars) {
+      galaxyData.stars.forEach(star => {
+        if (star.planets && Array.isArray(star.planets)) {
+          star.planets.forEach(planet => {
+            // Calculate planet position from parent star + orbit offset
+            const orbitOffset = planet.orbit || 0;
+            const angle = (planet.orbit * 137.5) % 360; // Golden angle distribution
+            const separationMultiplier = 1; // Use base separation for search
+            const offsetX = Math.cos(angle * Math.PI / 180) * orbitOffset * separationMultiplier;
+            const offsetY = Math.sin(angle * Math.PI / 180) * orbitOffset * separationMultiplier;
+
+            searchIndex.push({
+              name: planet.name,
+              type: 'planet',
+              data: planet,
+              coordinates: {
+                x: star.coordinates.x + offsetX,
+                y: star.coordinates.y + offsetY,
+                z: star.coordinates.z
+              }
+            });
+          });
+        }
+      });
+    }
 
     const results = searchIndex
       .filter(item => item.name.toLowerCase().includes(query.toLowerCase()))
