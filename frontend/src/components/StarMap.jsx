@@ -263,6 +263,7 @@ function StarMap() {
           shipLocation={shipLocation}
           showAllShips={nearbyShips.length > 0}
           allShips={nearbyShips}
+          enablePlanetSearch={true}
         />
       ) : (
         <div className="flex items-center justify-center h-full">
