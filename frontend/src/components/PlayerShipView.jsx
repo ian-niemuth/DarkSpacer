@@ -189,28 +189,36 @@ function ShipDetails({ ship, activeTab, setActiveTab, viewMode, setViewMode, use
             </div>
           </div>
           
-          {/* View Mode Toggle */}
-          <div className="flex gap-2 bg-gray-700 rounded p-1">
-            <button
-              onClick={() => setViewMode('list')}
-              className={`px-4 py-2 rounded font-bold text-sm transition-colors ${
-                viewMode === 'list'
-                  ? 'bg-purple-600 text-white'
-                  : 'text-gray-400 hover:text-white'
-              }`}
+          {/* View Mode Toggle & Star Map */}
+          <div className="flex gap-2">
+            <div className="flex gap-2 bg-gray-700 rounded p-1">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`px-4 py-2 rounded font-bold text-sm transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-purple-600 text-white'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                📋 List View
+              </button>
+              <button
+                onClick={() => setViewMode('schematic')}
+                className={`px-4 py-2 rounded font-bold text-sm transition-colors ${
+                  viewMode === 'schematic'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                🔧 Schematic
+              </button>
+            </div>
+            <Link
+              to={`/ships/${ship.id}/star-map`}
+              className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded font-bold text-sm transition-colors"
             >
-              📋 List View
-            </button>
-            <button
-              onClick={() => setViewMode('schematic')}
-              className={`px-4 py-2 rounded font-bold text-sm transition-colors ${
-                viewMode === 'schematic'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              🔧 Schematic
-            </button>
+              🗺️ Star Map
+            </Link>
           </div>
         </div>
 

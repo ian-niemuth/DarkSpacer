@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 import { API_URL, WS_URL } from './config/api';
@@ -16,6 +16,8 @@ import Communicator from './components/Communicator';
 import BugReportModal from './components/BugReportModal';
 import BugReportsPanel from './components/BugReportsPanel';
 import RegistrationCodesPanel from './components/RegistrationCodesPanel';
+import StarMap from './components/StarMap';
+import GalaxyMapDM from './components/admin/GalaxyMapDM';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -106,10 +108,16 @@ function App() {
     );
   }
 
-  return (
-    <BrowserRouter>
-      <div className="min-h-screen bg-gray-900">
-        {user && (
+  // Component that uses useLocation - must be inside BrowserRouter
+  function AppContent() {
+    const location = useLocation();
+
+    // Hide navigation on star map routes
+    const isStarMapRoute = location.pathname.includes('/star-map') || location.pathname.includes('/galaxy-map');
+
+    return (
+      <>
+        {user && !isStarMapRoute && (
           <>
             {/* Desktop/Tablet Navigation */}
             <nav className="bg-gray-800 border-b border-gray-700">
@@ -320,21 +328,21 @@ function App() {
               user ? <Navigate to="/" /> : <Login onLogin={handleLogin} />
             }
           />
-          
+
           <Route
             path="/"
             element={
               user ? <Dashboard user={user} /> : <Navigate to="/login" />
             }
           />
-          
+
           <Route
             path="/character/:id"
             element={
               user ? <CharacterSheet user={user} /> : <Navigate to="/login" />
             }
           />
-          
+
           <Route
             path="/admin"
             element={
@@ -345,7 +353,7 @@ function App() {
               )
             }
           />
-          
+
           <Route
             path="/admin/ships"
             element={
@@ -356,21 +364,21 @@ function App() {
               )
             }
           />
-          
+
           <Route
             path="/ships/:id?"
             element={
               user ? <PlayerShipView user={user} /> : <Navigate to="/login" />
             }
           />
-          
+
           <Route
             path="/catalog/ships"
             element={
               user ? <ShipCatalog user={user} /> : <Navigate to="/login" />
             }
           />
-          
+
           <Route
             path="/catalog/gear"
             element={
@@ -417,12 +425,38 @@ function App() {
               )
             }
           />
+
+          <Route
+            path="/ships/:shipId/star-map"
+            element={
+              user ? <StarMap user={user} /> : <Navigate to="/login" />
+            }
+          />
+
+          <Route
+            path="/admin/galaxy-map"
+            element={
+              user && user.isAdmin ? (
+                <GalaxyMapDM user={user} />
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
         </Routes>
 
         {/* Bug Report Modal */}
         {showBugReport && (
           <BugReportModal onClose={() => setShowBugReport(false)} />
         )}
+      </>
+    );
+  }
+
+  return (
+    <BrowserRouter>
+      <div className="min-h-screen bg-gray-900">
+        <AppContent />
       </div>
     </BrowserRouter>
   );

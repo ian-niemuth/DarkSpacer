@@ -1,0 +1,1554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galactic Command Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            color: #0ff;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            cursor: crosshair;
+        }
+
+        canvas:active {
+            cursor: grabbing;
+        }
+
+        /* Sci-fi panel base style */
+        .ui-panel {
+            position: absolute;
+            background: rgba(0, 10, 20, 0.85);
+            border: 1px solid #0ff;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3), inset 0 0 20px rgba(0, 255, 255, 0.1);
+            padding: 12px;
+            color: #0ff;
+            font-size: 0.85em;
+            backdrop-filter: blur(5px);
+        }
+
+        .ui-panel::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: linear-gradient(45deg, transparent, rgba(0, 255, 255, 0.1), transparent);
+            z-index: -1;
+        }
+
+        .panel-header {
+            font-weight: bold;
+            color: #0ff;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid rgba(0, 255, 255, 0.3);
+            text-transform: uppercase;
+            font-size: 0.9em;
+            letter-spacing: 2px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-toggle {
+            cursor: pointer;
+            padding: 2px 6px;
+            border: 1px solid #0ff;
+            background: rgba(0, 255, 255, 0.1);
+            font-size: 0.8em;
+        }
+
+        .panel-toggle:hover {
+            background: rgba(0, 255, 255, 0.3);
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        /* Search panel - top left */
+        #search-panel {
+            top: 20px;
+            left: 20px;
+            width: 320px;
+            z-index: 200;
+        }
+
+        #search-input {
+            width: 100%;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid #0ff;
+            color: #0ff;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        #search-input:focus {
+            outline: none;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        #search-input::placeholder {
+            color: rgba(0, 255, 255, 0.5);
+        }
+
+        #search-results {
+            max-height: 200px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.9);
+            border: 1px solid #0ff;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .search-result-item {
+            padding: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+        }
+
+        .search-result-item:hover {
+            background: rgba(0, 255, 255, 0.2);
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+        }
+
+        .search-result-type {
+            color: #0f0;
+            font-size: 0.8em;
+            margin-left: 8px;
+        }
+
+        /* Layers panel - left side */
+        #layers-panel {
+            top: 120px;
+            left: 20px;
+            width: 200px;
+            z-index: 150;
+        }
+
+        /* Objects panel - left side below layers */
+        #objects-panel {
+            top: 350px;
+            left: 20px;
+            width: 200px;
+            z-index: 150;
+        }
+
+        .filter-option {
+            display: flex;
+            align-items: center;
+            padding: 6px;
+            margin: 4px 0;
+            background: rgba(0, 255, 255, 0.05);
+            border: 1px solid rgba(0, 255, 255, 0.2);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .filter-option:hover {
+            background: rgba(0, 255, 255, 0.15);
+            border-color: #0ff;
+        }
+
+        .filter-option input[type="checkbox"] {
+            margin-right: 8px;
+            cursor: pointer;
+            accent-color: #0ff;
+        }
+
+        .filter-option label {
+            cursor: pointer;
+            flex: 1;
+        }
+
+        /* Controls panel - bottom left */
+        #controls-panel {
+            bottom: 20px;
+            left: 20px;
+            width: 250px;
+            z-index: 150;
+        }
+
+        .control-item {
+            margin: 8px 0;
+        }
+
+        .control-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+            font-size: 0.8em;
+        }
+
+        .value-display {
+            color: #0f0;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: #0ff;
+        }
+
+        button {
+            width: 100%;
+            padding: 8px;
+            margin: 4px 0;
+            background: rgba(0, 255, 255, 0.1);
+            color: #0ff;
+            border: 1px solid #0ff;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: rgba(0, 255, 255, 0.3);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        /* Legend panel - bottom right */
+        #legend-panel {
+            bottom: 20px;
+            right: 20px;
+            width: 220px;
+            z-index: 150;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 6px 0;
+            font-size: 0.75em;
+        }
+
+        .legend-color {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            margin-right: 8px;
+            border: 1px solid #0ff;
+        }
+
+        .legend-color.square {
+            border-radius: 2px;
+        }
+
+        /* File loader - top right */
+        #file-panel {
+            top: 20px;
+            right: 20px;
+            width: 200px;
+            z-index: 200;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        #file-label {
+            display: block;
+            padding: 10px;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px dashed #0ff;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.8em;
+        }
+
+        #file-label:hover {
+            background: rgba(0, 255, 255, 0.3);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+        }
+
+        /* Breadcrumb */
+        #breadcrumb {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 10, 20, 0.9);
+            padding: 10px 20px;
+            border: 1px solid #0ff;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+            font-size: 0.9em;
+            color: rgba(0, 255, 255, 0.7);
+            z-index: 100;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        #breadcrumb span {
+            color: #0ff;
+            cursor: pointer;
+            text-decoration: none;
+            padding: 2px 4px;
+            border-bottom: 1px solid transparent;
+            transition: all 0.2s;
+        }
+
+        #breadcrumb span:hover {
+            border-bottom: 1px solid #0ff;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+        }
+
+        #breadcrumb strong {
+            color: #0f0;
+            text-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+        }
+
+        /* Zoom info */
+        #zoom-info {
+            position: absolute;
+            bottom: 20px;
+            right: 260px;
+            background: rgba(0, 10, 20, 0.85);
+            padding: 8px 15px;
+            border: 1px solid #0ff;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+            font-size: 0.85em;
+            color: #0ff;
+            z-index: 100;
+            font-family: 'Courier New', monospace;
+        }
+
+        #zoom-value {
+            color: #0f0;
+            margin-left: 5px;
+        }
+
+        /* Tooltip */
+        #tooltip {
+            position: absolute;
+            background: rgba(0, 10, 20, 0.95);
+            color: #0ff;
+            padding: 10px 15px;
+            border: 1px solid #0ff;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+            font-size: 0.75em;
+            pointer-events: none;
+            z-index: 1000;
+            display: none;
+            max-width: 280px;
+            font-family: 'Courier New', monospace;
+            line-height: 1.4;
+        }
+
+        .hierarchy-link {
+            color: #0f0;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        .hierarchy-link:hover {
+            text-shadow: 0 0 10px rgba(0, 255, 0, 0.8);
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #0ff;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #0f0;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+
+        .panel-content {
+            transition: max-height 0.3s, opacity 0.3s;
+            overflow: hidden;
+        }
+
+        .panel-content.collapsed {
+            max-height: 0 !important;
+            opacity: 0;
+            padding: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="canvas-xy"></canvas>
+
+        <!-- Breadcrumb Navigation -->
+        <div id="breadcrumb"></div>
+
+        <!-- Zoom Info -->
+        <div id="zoom-info">ZOOM: <span id="zoom-value">100%</span></div>
+
+        <!-- Search Panel -->
+        <div class="ui-panel" id="search-panel">
+            <div class="panel-header">
+                <span>SCANNER</span>
+                <span class="panel-toggle" onclick="togglePanel('search-content')">_</span>
+            </div>
+            <div class="panel-content" id="search-content" style="max-height: 300px;">
+                <input type="text" id="search-input" placeholder="Search coordinates...">
+                <div id="search-results"></div>
+            </div>
+        </div>
+
+        <!-- Layers Panel -->
+        <div class="ui-panel" id="layers-panel">
+            <div class="panel-header">
+                <span>SECTORS</span>
+                <span class="panel-toggle" onclick="togglePanel('layers-content')">_</span>
+            </div>
+            <div class="panel-content" id="layers-content" style="max-height: 200px;">
+                <div class="filter-option">
+                    <input type="checkbox" id="showRegions" checked>
+                    <label for="showRegions">Regions</label>
+                </div>
+                <div class="filter-option">
+                    <input type="checkbox" id="showSectors">
+                    <label for="showSectors">Sectors</label>
+                </div>
+                <div class="filter-option">
+                    <input type="checkbox" id="showSystems">
+                    <label for="showSystems">Systems</label>
+                </div>
+                <div class="filter-option">
+                    <input type="checkbox" id="showHazards">
+                    <label for="showHazards">Hazards</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Objects Panel -->
+        <div class="ui-panel" id="objects-panel">
+            <div class="panel-header">
+                <span>OBJECTS</span>
+                <span class="panel-toggle" onclick="togglePanel('objects-content')">_</span>
+            </div>
+            <div class="panel-content" id="objects-content" style="max-height: 180px;">
+                <div class="filter-option">
+                    <input type="checkbox" id="showStars" checked>
+                    <label for="showStars">Stars</label>
+                </div>
+                <div class="filter-option">
+                    <input type="checkbox" id="showPlanets" checked>
+                    <label for="showPlanets">Planets</label>
+                </div>
+                <div class="filter-option">
+                    <input type="checkbox" id="showHabitable" checked>
+                    <label for="showHabitable">Habitable</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controls Panel -->
+        <div class="ui-panel" id="controls-panel">
+            <div class="panel-header">
+                <span>DISPLAY</span>
+                <span class="panel-toggle" onclick="togglePanel('controls-content')">_</span>
+            </div>
+            <div class="panel-content" id="controls-content" style="max-height: 250px;">
+                <div class="control-item">
+                    <div class="control-label">
+                        <span>Point Size</span>
+                        <span class="value-display" id="pointSizeValue">3</span>
+                    </div>
+                    <input type="range" id="pointSize" min="1" max="10" value="3" step="0.5">
+                </div>
+                <div class="control-item">
+                    <div class="control-label">
+                        <span>Depth</span>
+                        <span class="value-display" id="depthColorValue">50%</span>
+                    </div>
+                    <input type="range" id="depthColor" min="0" max="100" value="50">
+                </div>
+                <button id="resetZoom">Reset View</button>
+                <button id="autoFit">Auto-Fit</button>
+            </div>
+        </div>
+
+        <!-- Legend Panel -->
+        <div class="ui-panel" id="legend-panel">
+            <div class="panel-header">
+                <span>LEGEND</span>
+                <span class="panel-toggle" onclick="togglePanel('legend-content')">_</span>
+            </div>
+            <div class="panel-content" id="legend-content" style="max-height: 200px;">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ffdd88;"></div>
+                    <span>Stars</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #4db8ff;"></div>
+                    <span>Habitable</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #888888;"></div>
+                    <span>Planets</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: rgba(77, 184, 255, 0.3); border: 1px dashed #4db8ff;"></div>
+                    <span>Regions</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: rgba(255, 107, 107, 0.2); border: 1px dashed #ff6b6b;"></div>
+                    <span>Hazards</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- File Loader Panel -->
+        <div class="ui-panel" id="file-panel">
+            <div class="panel-header">
+                <span>DATA</span>
+                <span class="panel-toggle" onclick="togglePanel('file-content')">_</span>
+            </div>
+            <div class="panel-content" id="file-content" style="max-height: 100px;">
+                <input type="file" id="file-input" accept=".json">
+                <label for="file-input" id="file-label">LOAD DATA</label>
+            </div>
+        </div>
+    </div>
+
+    <div id="tooltip"></div>
+
+    <script>
+        function togglePanel(contentId) {
+            const content = document.getElementById(contentId);
+            content.classList.toggle('collapsed');
+        }
+
+        class GalaxyViewer {
+            constructor() {
+                this.data = null;
+                this.view = { canvas: null, ctx: null, axis1: 'x', axis2: 'y', depthAxis: 'z', offset: {x: 0, y: 0}, zoom: 1, isDragging: false };
+                this.filters = {
+                    showRegions: true,
+                    showSectors: false,
+                    showSystems: false,
+                    showHazards: false,
+                    showStars: true,
+                    showPlanets: true,
+                    showHabitable: true
+                };
+                this.pointSize = 3;
+                this.depthColorIntensity = 0.5;
+                this.bounds = { minX: 0, maxX: 0, minY: 0, maxY: 0, minZ: 0, maxZ: 0 };
+                this.searchIndex = [];
+                this.isolation = {
+                    level: null,
+                    id: null,
+                    data: null
+                };
+
+                this.init();
+            }
+
+            init() {
+                // Setup canvas
+                this.view.canvas = document.getElementById('canvas-xy');
+                this.view.ctx = this.view.canvas.getContext('2d');
+                this.setupCanvas(this.view);
+                this.setupInteraction(this.view);
+
+                // Setup controls
+                document.getElementById('file-input').addEventListener('change', (e) => this.loadFile(e));
+                document.getElementById('showRegions').addEventListener('change', (e) => { this.filters.showRegions = e.target.checked; this.render(); });
+                document.getElementById('showSectors').addEventListener('change', (e) => { this.filters.showSectors = e.target.checked; this.render(); });
+                document.getElementById('showSystems').addEventListener('change', (e) => { this.filters.showSystems = e.target.checked; this.render(); });
+                document.getElementById('showHazards').addEventListener('change', (e) => { this.filters.showHazards = e.target.checked; this.render(); });
+                document.getElementById('showStars').addEventListener('change', (e) => { this.filters.showStars = e.target.checked; this.render(); });
+                document.getElementById('showPlanets').addEventListener('change', (e) => { this.filters.showPlanets = e.target.checked; this.render(); });
+                document.getElementById('showHabitable').addEventListener('change', (e) => { this.filters.showHabitable = e.target.checked; this.render(); });
+                document.getElementById('pointSize').addEventListener('input', (e) => { this.pointSize = parseFloat(e.target.value); document.getElementById('pointSizeValue').textContent = e.target.value; this.render(); });
+                document.getElementById('depthColor').addEventListener('input', (e) => { this.depthColorIntensity = parseInt(e.target.value) / 100; document.getElementById('depthColorValue').textContent = e.target.value + '%'; this.render(); });
+                document.getElementById('resetZoom').addEventListener('click', () => this.resetAllViews());
+                document.getElementById('autoFit').addEventListener('click', () => this.autoFit());
+
+                // Search
+                document.getElementById('search-input').addEventListener('input', (e) => this.onSearch(e.target.value));
+                document.getElementById('search-input').addEventListener('blur', () => {
+                    setTimeout(() => {
+                        document.getElementById('search-results').style.display = 'none';
+                    }, 200);
+                });
+
+                // Handle window resize
+                window.addEventListener('resize', () => {
+                    this.setupCanvas(this.view);
+                    this.render();
+                });
+
+                // Try to load default file
+                this.loadDefaultFile();
+            }
+
+            setupCanvas(view) {
+                view.canvas.width = window.innerWidth;
+                view.canvas.height = window.innerHeight;
+            }
+
+            setupInteraction(view) {
+                let lastPos = { x: 0, y: 0 };
+                let mouseDownPos = { x: 0, y: 0 };
+                let hasMoved = false;
+
+                view.canvas.addEventListener('mousedown', (e) => {
+                    view.isDragging = true;
+                    lastPos = { x: e.offsetX, y: e.offsetY };
+                    mouseDownPos = { x: e.offsetX, y: e.offsetY };
+                    hasMoved = false;
+                });
+
+                view.canvas.addEventListener('mousemove', (e) => {
+                    if (view.isDragging) {
+                        const dx = e.offsetX - lastPos.x;
+                        const dy = e.offsetY - lastPos.y;
+                        view.offset.x += dx / view.zoom;
+                        view.offset.y -= dy / view.zoom;
+                        lastPos = { x: e.offsetX, y: e.offsetY };
+                        hasMoved = true;
+                        this.render();
+                    } else {
+                        this.showTooltip(e, view);
+                    }
+                });
+
+                view.canvas.addEventListener('mouseup', (e) => {
+                    view.isDragging = false;
+
+                    // If mouse didn't move much, treat as click
+                    const dist = Math.sqrt((e.offsetX - mouseDownPos.x) ** 2 + (e.offsetY - mouseDownPos.y) ** 2);
+                    if (!hasMoved && dist < 5) {
+                        this.onClick(e, view);
+                    }
+                });
+
+                view.canvas.addEventListener('mouseleave', () => {
+                    view.isDragging = false;
+                    document.getElementById('tooltip').style.display = 'none';
+                });
+
+                view.canvas.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+                    view.zoom *= delta;
+                    view.zoom = Math.max(0.1, Math.min(view.zoom, 50));
+                    document.getElementById('zoom-value').textContent = Math.round(view.zoom * 100) + '%';
+                    this.render();
+                });
+
+                // Double-click to focus/isolate
+                view.canvas.addEventListener('dblclick', (e) => this.onDoubleClick(e, view));
+            }
+
+            onClick(event, view) {
+                if (!this.data) return;
+
+                const mouseX = event.offsetX;
+                const mouseY = event.offsetY;
+
+                let closestObj = null;
+                let closestDist = 20;
+
+                // Check for stars
+                if (this.filters.showStars && this.data.stars) {
+                    this.data.stars.forEach(star => {
+                        const coords = star.coordinates;
+                        const x1 = coords[view.axis1];
+                        const x2 = coords[view.axis2];
+                        const screenX = view.canvas.width / 2 + (x1 + view.offset.x) * view.zoom;
+                        const screenY = view.canvas.height / 2 - (x2 + view.offset.y) * view.zoom;
+                        const dist = Math.sqrt((mouseX - screenX) ** 2 + (mouseY - screenY) ** 2);
+
+                        if (dist < closestDist) {
+                            closestDist = dist;
+                            closestObj = { type: 'star', data: star, coordinates: star.coordinates };
+                        }
+                    });
+                }
+
+                // Check for planets
+                if ((this.filters.showPlanets || this.filters.showHabitable) && this.data.stars) {
+                    this.data.stars.forEach(star => {
+                        star.planets?.forEach((planet, planetIndex) => {
+                            const isHabitable = planet.habitability > 50;
+                            if ((this.filters.showPlanets && !isHabitable) || (this.filters.showHabitable && isHabitable)) {
+                                const orbitScaleFactor = 8;
+                                const orbitDistance = (planet.orbit || 1) * orbitScaleFactor;
+                                const angle = (planetIndex / (star.planets.length || 1)) * Math.PI * 2;
+
+                                const planetCoords = {
+                                    x: star.coordinates.x + Math.cos(angle) * orbitDistance,
+                                    y: star.coordinates.y + Math.sin(angle) * orbitDistance,
+                                    z: star.coordinates.z
+                                };
+
+                                const x1 = planetCoords[view.axis1];
+                                const x2 = planetCoords[view.axis2];
+                                const screenX = view.canvas.width / 2 + (x1 + view.offset.x) * view.zoom;
+                                const screenY = view.canvas.height / 2 - (x2 + view.offset.y) * view.zoom;
+                                const dist = Math.sqrt((mouseX - screenX) ** 2 + (mouseY - screenY) ** 2);
+
+                                if (dist < closestDist) {
+                                    closestDist = dist;
+                                    closestObj = { type: 'planet', data: planet, star: star, coordinates: planetCoords };
+                                }
+                            }
+                        });
+                    });
+                }
+
+                // If we found a star or planet, focus on it
+                if (closestObj) {
+                    // Find the system that contains this star
+                    let system = null;
+                    if (closestObj.type === 'star') {
+                        system = this.data.systems?.find(s => s.stars?.includes(closestObj.data.id));
+                    } else if (closestObj.type === 'planet' && closestObj.star) {
+                        system = this.data.systems?.find(s => s.stars?.includes(closestObj.star.id));
+                    }
+
+                    // Focus on the system if found, otherwise focus on the object itself
+                    if (system) {
+                        this.focusOnObject({
+                            type: 'system',
+                            coordinates: system.coordinates
+                        });
+                        // Also isolate to the system
+                        this.isolateTo('system', system.id, system);
+                    } else {
+                        this.focusOnObject(closestObj);
+                    }
+                }
+            }
+
+            onDoubleClick(event, view) {
+                if (!this.data) return;
+
+                const mouseX = event.offsetX;
+                const mouseY = event.offsetY;
+
+                let closestObj = null;
+                let closestDist = 30;
+
+                if (this.filters.showRegions && this.data.regions) {
+                    this.data.regions.forEach(region => {
+                        const coords = region.coordinates;
+                        const x1 = coords[view.axis1];
+                        const x2 = coords[view.axis2];
+                        const screenX = view.canvas.width / 2 + (x1 + view.offset.x) * view.zoom;
+                        const screenY = view.canvas.height / 2 - (x2 + view.offset.y) * view.zoom;
+                        const dist = Math.sqrt((mouseX - screenX) ** 2 + (mouseY - screenY) ** 2);
+
+                        if (dist < closestDist || dist < region.radius * Math.pow(view.zoom, 0.7)) {
+                            closestDist = dist;
+                            closestObj = { type: 'region', data: region };
+                        }
+                    });
+                }
+
+                if (this.filters.showSectors && this.data.sectors) {
+                    this.data.sectors.forEach(sector => {
+                        const coords = sector.coordinates;
+                        const x1 = coords[view.axis1];
+                        const x2 = coords[view.axis2];
+                        const screenX = view.canvas.width / 2 + (x1 + view.offset.x) * view.zoom;
+                        const screenY = view.canvas.height / 2 - (x2 + view.offset.y) * view.zoom;
+                        const dist = Math.sqrt((mouseX - screenX) ** 2 + (mouseY - screenY) ** 2);
+
+                        if (dist < closestDist || dist < sector.radius * Math.pow(view.zoom, 0.75)) {
+                            closestDist = dist;
+                            closestObj = { type: 'sector', data: sector };
+                        }
+                    });
+                }
+
+                if (this.filters.showSystems && this.data.systems) {
+                    this.data.systems.forEach(system => {
+                        const coords = system.coordinates;
+                        const x1 = coords[view.axis1];
+                        const x2 = coords[view.axis2];
+                        const screenX = view.canvas.width / 2 + (x1 + view.offset.x) * view.zoom;
+                        const screenY = view.canvas.height / 2 - (x2 + view.offset.y) * view.zoom;
+                        const dist = Math.sqrt((mouseX - screenX) ** 2 + (mouseY - screenY) ** 2);
+
+                        if (dist < closestDist) {
+                            closestDist = dist;
+                            closestObj = { type: 'system', data: system };
+                        }
+                    });
+                }
+
+                if (closestObj) {
+                    this.isolateTo(closestObj.type, closestObj.data.id, closestObj.data);
+                }
+            }
+
+            async loadDefaultFile() {
+                try {
+                    const response = await fetch('galaxy_export.json');
+                    if (response.ok) {
+                        const data = await response.json();
+                        this.processData(data);
+                    }
+                } catch (error) {
+                    console.log('No default file found, waiting for user upload');
+                }
+            }
+
+            loadFile(event) {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const data = JSON.parse(e.target.result);
+                            this.processData(data);
+                        } catch (error) {
+                            alert('Error parsing JSON file: ' + error.message);
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            }
+
+            processData(data) {
+                this.data = data;
+
+                // Calculate bounds
+                let minX = Infinity, maxX = -Infinity;
+                let minY = Infinity, maxY = -Infinity;
+                let minZ = Infinity, maxZ = -Infinity;
+
+                data.stars?.forEach(star => {
+                    const c = star.coordinates;
+                    minX = Math.min(minX, c.x); maxX = Math.max(maxX, c.x);
+                    minY = Math.min(minY, c.y); maxY = Math.max(maxY, c.y);
+                    minZ = Math.min(minZ, c.z); maxZ = Math.max(maxZ, c.z);
+                });
+
+                this.bounds = { minX, maxX, minY, maxY, minZ, maxZ };
+
+                this.buildSearchIndex();
+                this.updateBreadcrumb();
+                this.autoFit();
+            }
+
+            buildSearchIndex() {
+                this.searchIndex = [];
+
+                this.data.stars?.forEach(star => {
+                    this.searchIndex.push({
+                        name: star.name,
+                        type: 'star',
+                        data: star,
+                        coordinates: star.coordinates
+                    });
+                });
+
+                this.data.stars?.forEach(star => {
+                    star.planets?.forEach((planet, planetIndex) => {
+                        const orbitScaleFactor = 8;
+                        const orbitDistance = (planet.orbit || 1) * orbitScaleFactor;
+                        const angle = (planetIndex / (star.planets.length || 1)) * Math.PI * 2;
+
+                        const planetCoords = {
+                            x: star.coordinates.x + Math.cos(angle) * orbitDistance,
+                            y: star.coordinates.y + Math.sin(angle) * orbitDistance,
+                            z: star.coordinates.z
+                        };
+
+                        this.searchIndex.push({
+                            name: planet.name,
+                            type: 'planet',
+                            data: planet,
+                            star: star,
+                            coordinates: planetCoords
+                        });
+                    });
+                });
+
+                this.data.regions?.forEach(region => {
+                    this.searchIndex.push({
+                        name: region.name,
+                        type: 'region',
+                        data: region,
+                        coordinates: region.coordinates
+                    });
+                });
+
+                this.data.sectors?.forEach(sector => {
+                    this.searchIndex.push({
+                        name: sector.name,
+                        type: 'sector',
+                        data: sector,
+                        coordinates: sector.coordinates
+                    });
+                });
+
+                this.data.systems?.forEach(system => {
+                    this.searchIndex.push({
+                        name: system.name,
+                        type: 'system',
+                        data: system,
+                        coordinates: system.coordinates
+                    });
+                });
+            }
+
+            onSearch(query) {
+                const resultsDiv = document.getElementById('search-results');
+
+                if (!query || query.length < 2) {
+                    resultsDiv.style.display = 'none';
+                    return;
+                }
+
+                const results = this.searchIndex.filter(item =>
+                    item.name.toLowerCase().includes(query.toLowerCase())
+                ).slice(0, 10);
+
+                if (results.length === 0) {
+                    resultsDiv.innerHTML = '<div class="search-result-item" style="color: #888;">No results found</div>';
+                    resultsDiv.style.display = 'block';
+                    return;
+                }
+
+                resultsDiv.innerHTML = results.map(result => `
+                    <div class="search-result-item" data-result='${JSON.stringify(result)}'>
+                        ${result.name}
+                        <span class="search-result-type">[${result.type}]</span>
+                    </div>
+                `).join('');
+
+                resultsDiv.querySelectorAll('.search-result-item').forEach(el => {
+                    if (el.getAttribute('data-result')) {
+                        el.addEventListener('click', () => {
+                            const result = JSON.parse(el.getAttribute('data-result'));
+                            this.focusOnObject(result);
+                            document.getElementById('search-input').value = '';
+                            resultsDiv.style.display = 'none';
+                        });
+                    }
+                });
+
+                resultsDiv.style.display = 'block';
+            }
+
+            focusOnObject(result) {
+                if (!result.coordinates) return;
+
+                const targetCoords = result.coordinates;
+
+                let targetZoom = 1;
+                switch (result.type) {
+                    case 'region': targetZoom = 0.3; break;
+                    case 'sector': targetZoom = 0.8; break;
+                    case 'system': targetZoom = 2; break;
+                    case 'star': targetZoom = 3; break;
+                    case 'planet': targetZoom = 4; break;
+                }
+
+                this.view.zoom = targetZoom;
+                this.view.offset = {
+                    x: -targetCoords[this.view.axis1],
+                    y: -targetCoords[this.view.axis2]
+                };
+
+                document.getElementById('zoom-value').textContent = Math.round(this.view.zoom * 100) + '%';
+                this.render();
+            }
+
+            isolateTo(level, id, data) {
+                this.isolation.level = level;
+                this.isolation.id = id;
+                this.isolation.data = data;
+
+                this.updateBreadcrumb();
+                this.applyIsolationFilter();
+                this.render();
+            }
+
+            updateBreadcrumb() {
+                const breadcrumb = document.getElementById('breadcrumb');
+
+                let html = '';
+
+                if (!this.isolation.level) {
+                    html = '<strong>GALAXY</strong>';
+                } else {
+                    html = '<span onclick="viewer.isolateTo(null, null, null)">GALAXY</span> &gt; ';
+
+                    if (this.isolation.level === 'region') {
+                        html += `<strong>${this.isolation.data.name.toUpperCase()}</strong>`;
+                    } else if (this.isolation.level === 'sector') {
+                        const region = this.data.regions?.find(r => r.sectors.includes(this.isolation.id));
+                        if (region) {
+                            html += `<span onclick="viewer.isolateTo('region', '${region.id}', viewer.data.regions.find(r => r.id === '${region.id}'))">${region.name.toUpperCase()}</span> &gt; `;
+                        }
+                        html += `<strong>${this.isolation.data.name.toUpperCase()}</strong>`;
+                    } else if (this.isolation.level === 'system') {
+                        const sector = this.data.sectors?.find(s => s.systems.includes(this.isolation.id));
+                        const region = sector ? this.data.regions?.find(r => r.sectors.includes(sector.id)) : null;
+                        if (region) {
+                            html += `<span onclick="viewer.isolateTo('region', '${region.id}', viewer.data.regions.find(r => r.id === '${region.id}'))">${region.name.toUpperCase()}</span> &gt; `;
+                        }
+                        if (sector) {
+                            html += `<span onclick="viewer.isolateTo('sector', '${sector.id}', viewer.data.sectors.find(s => s.id === '${sector.id}'))">${sector.name.toUpperCase()}</span> &gt; `;
+                        }
+                        html += `<strong>${this.isolation.data.name.toUpperCase()}</strong>`;
+                    }
+                }
+
+                breadcrumb.innerHTML = html;
+            }
+
+            applyIsolationFilter() {
+                // Filtering happens in renderView
+            }
+
+            autoFit() {
+                const paddingFactor = 0.9;
+
+                const view = this.view;
+                const axis1Range = this.bounds['max' + view.axis1.toUpperCase()] - this.bounds['min' + view.axis1.toUpperCase()];
+                const axis2Range = this.bounds['max' + view.axis2.toUpperCase()] - this.bounds['min' + view.axis2.toUpperCase()];
+
+                const scaleX = (view.canvas.width * paddingFactor) / axis1Range;
+                const scaleY = (view.canvas.height * paddingFactor) / axis2Range;
+
+                view.zoom = Math.min(scaleX, scaleY);
+                view.offset = { x: 0, y: 0 };
+
+                document.getElementById('zoom-value').textContent = Math.round(view.zoom * 100) + '%';
+                this.render();
+            }
+
+            resetAllViews() {
+                this.view.zoom = 1;
+                this.view.offset = { x: 0, y: 0 };
+                document.getElementById('zoom-value').textContent = '100%';
+                this.render();
+            }
+
+            render() {
+                if (!this.data) return;
+                this.renderView(this.view);
+            }
+
+            renderView(view) {
+                const ctx = view.ctx;
+                const w = view.canvas.width;
+                const h = view.canvas.height;
+
+                ctx.fillStyle = '#0a0a0f';
+                ctx.fillRect(0, 0, w, h);
+
+                this.drawGrid(view);
+
+                let starIdsInContainer = null;
+                if (this.isolation.level) {
+                    starIdsInContainer = new Set();
+
+                    if (this.isolation.level === 'region') {
+                        const region = this.isolation.data;
+                        region.sectors.forEach(sectorId => {
+                            const sector = this.data.sectors?.find(s => s.id === sectorId);
+                            if (sector) {
+                                sector.systems.forEach(systemId => {
+                                    const system = this.data.systems?.find(sys => sys.id === systemId);
+                                    if (system && system.stars) {
+                                        system.stars.forEach(starId => starIdsInContainer.add(starId));
+                                    }
+                                });
+                            }
+                        });
+                    } else if (this.isolation.level === 'sector') {
+                        const sector = this.isolation.data;
+                        sector.systems.forEach(systemId => {
+                            const system = this.data.systems?.find(sys => sys.id === systemId);
+                            if (system && system.stars) {
+                                system.stars.forEach(starId => starIdsInContainer.add(starId));
+                            }
+                        });
+                    } else if (this.isolation.level === 'system') {
+                        const system = this.isolation.data;
+                        if (system.stars) {
+                            system.stars.forEach(starId => starIdsInContainer.add(starId));
+                        }
+                    }
+                }
+
+                if (this.filters.showRegions && this.data.regions) {
+                    this.data.regions.forEach(region => {
+                        if (!this.isolation.level || this.isolation.id === region.id) {
+                            this.drawRegion(view, region);
+                        }
+                    });
+                }
+                if (this.filters.showSectors && this.data.sectors) {
+                    this.data.sectors.forEach(sector => {
+                        let shouldShow = !this.isolation.level;
+                        if (this.isolation.level === 'region') {
+                            shouldShow = this.isolation.data.sectors.includes(sector.id);
+                        } else if (this.isolation.level === 'sector') {
+                            shouldShow = this.isolation.id === sector.id;
+                        }
+                        if (shouldShow) {
+                            this.drawSector(view, sector);
+                        }
+                    });
+                }
+                if (this.filters.showSystems && this.data.systems) {
+                    this.data.systems.forEach(system => {
+                        let shouldShow = !this.isolation.level;
+                        if (this.isolation.level === 'region') {
+                            const region = this.isolation.data;
+                            shouldShow = region.sectors.some(sectorId => {
+                                const sector = this.data.sectors?.find(s => s.id === sectorId);
+                                return sector && sector.systems.includes(system.id);
+                            });
+                        } else if (this.isolation.level === 'sector') {
+                            shouldShow = this.isolation.data.systems.includes(system.id);
+                        } else if (this.isolation.level === 'system') {
+                            shouldShow = this.isolation.id === system.id;
+                        }
+                        if (shouldShow) {
+                            this.drawSystem(view, system);
+                        }
+                    });
+                }
+                if (this.filters.showHazards && this.data.sectors) {
+                    this.data.sectors.forEach(sector => {
+                        let shouldShow = !this.isolation.level;
+                        if (this.isolation.level === 'region') {
+                            shouldShow = this.isolation.data.sectors.includes(sector.id);
+                        } else if (this.isolation.level === 'sector') {
+                            shouldShow = this.isolation.id === sector.id;
+                        }
+                        if (shouldShow) {
+                            sector.hazards?.forEach(hazard => this.drawHazard(view, hazard));
+                        }
+                    });
+                }
+
+                const objects = [];
+
+                if (this.filters.showStars && this.data.stars) {
+                    this.data.stars.forEach(star => {
+                        if (starIdsInContainer === null || starIdsInContainer.has(star.id)) {
+                            objects.push({
+                                type: 'star',
+                                data: star,
+                                coords: star.coordinates,
+                                color: this.getStarColor(star)
+                            });
+                        }
+                    });
+                }
+
+                if (this.filters.showPlanets || this.filters.showHabitable) {
+                    this.data.stars?.forEach(star => {
+                        if (starIdsInContainer !== null && !starIdsInContainer.has(star.id)) return;
+
+                        star.planets?.forEach((planet, planetIndex) => {
+                            const isHabitable = planet.habitability > 50;
+                            if ((this.filters.showPlanets && !isHabitable) || (this.filters.showHabitable && isHabitable)) {
+                                const orbitScaleFactor = 8;
+                                const orbitDistance = (planet.orbit || 1) * orbitScaleFactor;
+                                const angle = (planetIndex / (star.planets.length || 1)) * Math.PI * 2;
+
+                                const planetCoords = {
+                                    x: star.coordinates.x + Math.cos(angle) * orbitDistance,
+                                    y: star.coordinates.y + Math.sin(angle) * orbitDistance,
+                                    z: star.coordinates.z
+                                };
+
+                                objects.push({
+                                    type: 'planet',
+                                    data: planet,
+                                    coords: planetCoords,
+                                    color: isHabitable ? '#4db8ff' : '#888888'
+                                });
+                            }
+                        });
+                    });
+                }
+
+
+                objects.sort((a, b) => {
+                    return b.coords[view.depthAxis] - a.coords[view.depthAxis];
+                });
+
+                objects.forEach(obj => {
+                    this.drawObject(view, obj);
+                });
+            }
+
+            drawGrid(view) {
+                const ctx = view.ctx;
+                const w = view.canvas.width;
+                const h = view.canvas.height;
+
+                ctx.strokeStyle = '#1a1a2e';
+                ctx.lineWidth = 1;
+
+                const gridSpacing = 100 * view.zoom;
+                const startX = (view.offset.x * view.zoom) % gridSpacing;
+                const startY = (view.offset.y * view.zoom) % gridSpacing;
+
+                ctx.beginPath();
+                for (let x = startX; x < w; x += gridSpacing) {
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, h);
+                }
+                for (let y = startY; y < h; y += gridSpacing) {
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(w, y);
+                }
+                ctx.stroke();
+
+                ctx.strokeStyle = '#0ff';
+                ctx.lineWidth = 2;
+                const centerX = w / 2 + view.offset.x * view.zoom;
+                const centerY = h / 2 + view.offset.y * view.zoom;
+                ctx.beginPath();
+                ctx.moveTo(centerX - 10, centerY);
+                ctx.lineTo(centerX + 10, centerY);
+                ctx.moveTo(centerX, centerY - 10);
+                ctx.lineTo(centerX, centerY + 10);
+                ctx.stroke();
+            }
+
+            drawObject(view, obj) {
+                const ctx = view.ctx;
+                const coords = obj.coords;
+
+                const x1 = coords[view.axis1];
+                const x2 = coords[view.axis2];
+                const depth = coords[view.depthAxis];
+
+                const screenX = view.canvas.width / 2 + (x1 + view.offset.x) * view.zoom;
+                const screenY = view.canvas.height / 2 - (x2 + view.offset.y) * view.zoom;
+
+                const depthRange = this.bounds['max' + view.depthAxis.toUpperCase()] - this.bounds['min' + view.depthAxis.toUpperCase()];
+                const depthNormalized = (depth - this.bounds['min' + view.depthAxis.toUpperCase()]) / depthRange;
+                const depthFactor = 1 - (depthNormalized - 0.5) * this.depthColorIntensity;
+
+                const baseColor = this.hexToRgb(obj.color);
+                const finalColor = `rgba(${Math.floor(baseColor.r * depthFactor)}, ${Math.floor(baseColor.g * depthFactor)}, ${Math.floor(baseColor.b * depthFactor)}, ${0.7 + depthNormalized * 0.3})`;
+
+                ctx.fillStyle = finalColor;
+
+                const zoomFactor = view.zoom < 1 ? 1 : Math.pow(view.zoom, 0.4);
+
+                const baseRadius = obj.type === 'star' ? this.pointSize * 1.5 : this.pointSize;
+                const radius = Math.max(1, baseRadius * zoomFactor);
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            drawRegion(view, region) {
+                const ctx = view.ctx;
+                const coords = region.coordinates;
+                const x1 = coords[view.axis1];
+                const x2 = coords[view.axis2];
+                const radius = region.radius;
+
+                const screenX = view.canvas.width / 2 + (x1 + view.offset.x) * view.zoom;
+                const screenY = view.canvas.height / 2 - (x2 + view.offset.y) * view.zoom;
+                const screenRadius = radius * Math.pow(view.zoom, 0.7);
+
+                ctx.strokeStyle = '#4db8ff30';
+                ctx.fillStyle = '#4db8ff08';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, screenRadius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                if (view.zoom > 0.3) {
+                    ctx.fillStyle = '#0ff';
+                    ctx.font = '12px Courier New';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(region.name, screenX, screenY - screenRadius - 10);
+                }
+            }
+
+            drawSector(view, sector) {
+                const ctx = view.ctx;
+                const coords = sector.coordinates;
+                const x1 = coords[view.axis1];
+                const x2 = coords[view.axis2];
+                const radius = sector.radius;
+
+                const screenX = view.canvas.width / 2 + (x1 + view.offset.x) * view.zoom;
+                const screenY = view.canvas.height / 2 - (x2 + view.offset.y) * view.zoom;
+                const screenRadius = radius * Math.pow(view.zoom, 0.75);
+
+                const isContested = sector.contestedBy && sector.contestedBy.length > 0;
+                ctx.strokeStyle = isContested ? '#ff9900' : '#64b5f6';
+                ctx.fillStyle = '#64b5f615';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash(isContested ? [5, 5] : []);
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, screenRadius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                if (view.zoom > 0.5) {
+                    ctx.fillStyle = '#0ff';
+                    ctx.font = '10px Courier New';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(sector.name, screenX, screenY - screenRadius - 5);
+                }
+            }
+
+            drawSystem(view, system) {
+                const ctx = view.ctx;
+                const coords = system.coordinates;
+                const x1 = coords[view.axis1];
+                const x2 = coords[view.axis2];
+                const radius = 15;
+
+                const screenX = view.canvas.width / 2 + (x1 + view.offset.x) * view.zoom;
+                const screenY = view.canvas.height / 2 - (x2 + view.offset.y) * view.zoom;
+                const screenRadius = Math.max(3, radius * Math.pow(view.zoom, 0.5));
+
+                ctx.strokeStyle = '#0ff';
+                ctx.fillStyle = 'rgba(0,255,255,0.1)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, screenRadius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                if (view.zoom > 1) {
+                    ctx.fillStyle = '#0ff';
+                    ctx.font = '8px Courier New';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(system.name, screenX, screenY - screenRadius - 3);
+                }
+            }
+
+            drawHazard(view, hazard) {
+                const ctx = view.ctx;
+                const coords = hazard.coordinates;
+                const x1 = coords[view.axis1];
+                const x2 = coords[view.axis2];
+                const radius = hazard.radius;
+
+                const screenX = view.canvas.width / 2 + (x1 + view.offset.x) * view.zoom;
+                const screenY = view.canvas.height / 2 - (x2 + view.offset.y) * view.zoom;
+                const screenRadius = radius * Math.pow(view.zoom, 0.75);
+
+                ctx.strokeStyle = '#ff6b6b60';
+                ctx.fillStyle = '#ff6b6b15';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, screenRadius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                if (view.zoom > 0.7) {
+                    ctx.fillStyle = '#ff6b6b';
+                    ctx.font = '10px Courier New';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('⚠', screenX, screenY + 4);
+                }
+            }
+
+            showTooltip(event, view) {
+                if (!this.data || view.isDragging) return;
+
+                const rect = view.canvas.getBoundingClientRect();
+                const mouseX = event.offsetX;
+                const mouseY = event.offsetY;
+
+                let closestObj = null;
+                let closestDist = 20;
+
+                const checkObject = (type, data, coords, name) => {
+                    const x1 = coords[view.axis1];
+                    const x2 = coords[view.axis2];
+                    const screenX = view.canvas.width / 2 + (x1 + view.offset.x) * view.zoom;
+                    const screenY = view.canvas.height / 2 - (x2 + view.offset.y) * view.zoom;
+                    const dist = Math.sqrt((mouseX - screenX) ** 2 + (mouseY - screenY) ** 2);
+
+                    if (dist < closestDist) {
+                        closestDist = dist;
+                        closestObj = { type, data, name };
+                    }
+                };
+
+                if (this.filters.showStars && this.data.stars) {
+                    this.data.stars.forEach(star => {
+                        checkObject('star', star, star.coordinates, star.name);
+                    });
+                }
+
+                if (this.filters.showPlanets || this.filters.showHabitable) {
+                    this.data.stars?.forEach(star => {
+                        star.planets?.forEach((planet, planetIndex) => {
+                            const isHabitable = planet.habitability > 50;
+                            if ((this.filters.showPlanets && !isHabitable) || (this.filters.showHabitable && isHabitable)) {
+                                const orbitScaleFactor = 8;
+                                const orbitDistance = (planet.orbit || 1) * orbitScaleFactor;
+                                const angle = (planetIndex / (star.planets.length || 1)) * Math.PI * 2;
+
+                                const planetCoords = {
+                                    x: star.coordinates.x + Math.cos(angle) * orbitDistance,
+                                    y: star.coordinates.y + Math.sin(angle) * orbitDistance,
+                                    z: star.coordinates.z
+                                };
+
+                                checkObject('planet', planet, planetCoords, planet.name);
+                            }
+                        });
+                    });
+                }
+
+
+                const tooltip = document.getElementById('tooltip');
+                if (closestObj) {
+                    tooltip.innerHTML = this.getTooltipContent(closestObj);
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = (rect.left + mouseX + 15) + 'px';
+                    tooltip.style.top = (rect.top + mouseY - 10) + 'px';
+                } else {
+                    tooltip.style.display = 'none';
+                }
+            }
+
+            getTooltipContent(obj) {
+                const { type, data, name } = obj;
+
+                if (type === 'star') {
+                    let hierarchyHtml = '';
+                    const system = this.data.systems?.find(s => s.stars?.includes(data.id));
+                    const sector = system ? this.data.sectors?.find(sec => sec.systems?.includes(system.id)) : null;
+                    const region = sector ? this.data.regions?.find(r => r.sectors?.includes(sector.id)) : null;
+
+                    if (region || sector || system) {
+                        hierarchyHtml = '<strong>Location:</strong> ';
+                        if (region) {
+                            hierarchyHtml += `<span class="hierarchy-link" onclick="viewer.isolateTo('region', '${region.id}', viewer.data.regions.find(r => r.id === '${region.id}'))">${region.name}</span>`;
+                        }
+                        if (sector) {
+                            if (region) hierarchyHtml += ' &gt; ';
+                            hierarchyHtml += `<span class="hierarchy-link" onclick="viewer.isolateTo('sector', '${sector.id}', viewer.data.sectors.find(s => s.id === '${sector.id}'))">${sector.name}</span>`;
+                        }
+                        if (system) {
+                            if (sector || region) hierarchyHtml += ' &gt; ';
+                            hierarchyHtml += `<span class="hierarchy-link" onclick="viewer.isolateTo('system', '${system.id}', viewer.data.systems.find(sys => sys.id === '${system.id}'))">${system.name}</span>`;
+                        }
+                        hierarchyHtml += '<br>';
+                    }
+
+                    return `<strong>${name}</strong><br>
+                        ${hierarchyHtml}
+                        Type: Star (${data.spectralType})<br>
+                        Mass: ${data.mass?.toFixed(2)} M☉<br>
+                        Age: ${data.age?.toFixed(2)} Gy<br>
+                        Planets: ${data.planets?.length || 0}`;
+                } else if (type === 'planet') {
+                    let hierarchyHtml = '';
+                    const star = this.data.stars?.find(s => s.planets?.some(p => p.id === data.id));
+                    if (star) {
+                        const system = this.data.systems?.find(s => s.stars?.includes(star.id));
+                        const sector = system ? this.data.sectors?.find(sec => sec.systems?.includes(system.id)) : null;
+                        const region = sector ? this.data.regions?.find(r => r.sectors?.includes(sector.id)) : null;
+
+                        if (region || sector || system) {
+                            hierarchyHtml = '<strong>Location:</strong> ';
+                            if (region) {
+                                hierarchyHtml += `<span class="hierarchy-link" onclick="viewer.isolateTo('region', '${region.id}', viewer.data.regions.find(r => r.id === '${region.id}'))">${region.name}</span>`;
+                            }
+                            if (sector) {
+                                if (region) hierarchyHtml += ' &gt; ';
+                                hierarchyHtml += `<span class="hierarchy-link" onclick="viewer.isolateTo('sector', '${sector.id}', viewer.data.sectors.find(s => s.id === '${sector.id}'))">${sector.name}</span>`;
+                            }
+                            if (system) {
+                                if (sector || region) hierarchyHtml += ' &gt; ';
+                                hierarchyHtml += `<span class="hierarchy-link" onclick="viewer.isolateTo('system', '${system.id}', viewer.data.systems.find(sys => sys.id === '${system.id}'))">${system.name}</span>`;
+                            }
+                            hierarchyHtml += '<br>';
+                        }
+                    }
+
+                    return `<strong>${name}</strong><br>
+                        ${hierarchyHtml}
+                        Type: ${data.type}<br>
+                        Orbit: ${data.orbit?.toFixed(2)} AU<br>
+                        Habitability: ${data.habitability || 0}%<br>
+                        Temperature: ${data.temperature}K`;
+                }
+            }
+
+            getStarColor(star) {
+                const colors = {
+                    'O': '#9bb0ff',
+                    'B': '#aabfff',
+                    'A': '#cad7ff',
+                    'F': '#f8f7ff',
+                    'G': '#fff4ea',
+                    'K': '#ffd2a1',
+                    'M': '#ffcc6f'
+                };
+                return colors[star.spectralType] || '#ffffff';
+            }
+
+            hexToRgb(hex) {
+                const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                return result ? {
+                    r: parseInt(result[1], 16),
+                    g: parseInt(result[2], 16),
+                    b: parseInt(result[3], 16)
+                } : { r: 255, g: 255, b: 255 };
+            }
+        }
+
+        const viewer = new GalaxyViewer();
+        window.viewer = viewer;
+    </script>
+</body>
+</html>

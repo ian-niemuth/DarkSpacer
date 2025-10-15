@@ -286,6 +286,12 @@ function AdminPanel() {
           >
             🐛 Bug Reports
           </Link>
+          <Link
+            to="/admin/galaxy-map"
+            className="px-6 py-3 font-bold transition text-gray-400 hover:text-white hover:bg-gray-700"
+          >
+            🗺️ Galaxy Map
+          </Link>
         </div>
       </div>
 
