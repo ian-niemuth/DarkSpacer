@@ -190,6 +190,12 @@ function App() {
                         >
                           🎲 DM Panel
                         </Link>
+                        <Link
+                          to="/admin/galaxy-map"
+                          className="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded font-bold text-sm"
+                        >
+                          🗺️ Galaxy Map
+                        </Link>
                         {user.isSuperAdmin && (
                           <Link
                             to="/admin/registration-codes"
@@ -283,6 +289,13 @@ function App() {
                           className="block px-3 py-3 rounded-md text-base font-medium bg-red-600 text-white hover:bg-red-700"
                         >
                           🎲 DM Panel
+                        </Link>
+                        <Link
+                          to="/admin/galaxy-map"
+                          onClick={closeMobileMenu}
+                          className="block px-3 py-3 rounded-md text-base font-medium bg-cyan-600 text-white hover:bg-cyan-700"
+                        >
+                          🗺️ Galaxy Map
                         </Link>
                         {user.isSuperAdmin && (
                           <Link

@@ -48,6 +48,10 @@ function GalaxyCanvas({
   // Store rendered objects for hit detection
   const renderedObjectsRef = useRef([]);
 
+  // Track if we've done initial centering (to prevent re-centering on data updates)
+  const hasInitialCenteredRef = useRef(false);
+  const hasInitialFittedRef = useRef(false);
+
   // Calculate bounds when galaxy data changes
   useEffect(() => {
     if (!galaxyData || !galaxyData.stars) return;
@@ -66,23 +70,40 @@ function GalaxyCanvas({
     setBounds({ minX, maxX, minY, maxY, minZ, maxZ });
   }, [galaxyData]);
 
-  // Auto-fit on load
+  // Auto-fit on load - ONLY ON INITIAL LOAD
   useEffect(() => {
-    if (bounds.maxX !== 0) {
+    if (bounds.maxX !== 0 && !hasInitialFittedRef.current) {
       autoFit();
+      hasInitialFittedRef.current = true;
     }
   }, [bounds]);
 
-  // Auto-center on ship when loaded (player view only)
+  // Auto-center on ship when loaded (player view only) - ONLY ON INITIAL LOAD
   useEffect(() => {
-    if (shipLocation && !showAllShips && shipLocation.x !== undefined && shipLocation.y !== undefined) {
+    if (shipLocation && !showAllShips && shipLocation.x !== undefined && shipLocation.y !== undefined && !hasInitialCenteredRef.current) {
       // Small delay to ensure canvas is ready
       const timer = setTimeout(() => {
         centerOnShip();
+        hasInitialCenteredRef.current = true; // Mark as centered
       }, 100);
       return () => clearTimeout(timer);
     }
   }, [shipLocation, showAllShips]);
+
+  // Update selectedObject when ship data changes (for real-time component/weapons updates)
+  useEffect(() => {
+    if (selectedObject && selectedObject.type === 'ship' && allShips.length > 0) {
+      // Find updated ship data
+      const updatedShip = allShips.find(ship => ship.ship_id === selectedObject.data.ship_id);
+      if (updatedShip) {
+        // Update selectedObject with new data while preserving screen position
+        setSelectedObject(prev => ({
+          ...prev,
+          data: updatedShip
+        }));
+      }
+    }
+  }, [allShips]);
 
   const autoFit = useCallback(() => {
     const canvas = canvasRef.current;
@@ -388,13 +409,13 @@ function GalaxyCanvas({
       if (galaxyData.sensorRange && galaxyData.sensorRange > 0) {
         drawSensorRange(ctx, shipLocation, galaxyData.sensorRange);
       }
-      drawShipMarker(ctx, shipLocation, shipLocation.ship_name || 'Unknown Ship');
+      drawShipMarker(ctx, shipLocation, shipLocation.ship_name || 'Unknown Ship', true); // Player ship is green
     }
 
-    // Draw all ships if DM view
+    // Draw all ships if DM view or nearby ships for player
     if (showAllShips && allShips.length > 0) {
       allShips.forEach(ship => {
-        drawShipMarker(ctx, ship, ship.ship_name);
+        drawShipMarker(ctx, ship, ship.ship_name, false); // Other ships are red
       });
     }
 
@@ -770,16 +791,19 @@ function GalaxyCanvas({
     }
   };
 
-  const drawShipMarker = (ctx, ship, label) => {
+  const drawShipMarker = (ctx, ship, label, isPlayerShip = false) => {
     const x1 = parseFloat(ship.x);
     const x2 = parseFloat(ship.y);
 
     const screenX = canvasRef.current.width / 2 + (x1 + view.offset.x) * view.zoom;
     const screenY = canvasRef.current.height / 2 - (x2 + view.offset.y) * view.zoom;
 
+    // Choose color: green for player ship, red for others
+    const shipColor = isPlayerShip ? '#00ff00' : '#ff0000';
+
     // Draw ship icon
-    ctx.fillStyle = '#00ff00';
-    ctx.strokeStyle = '#00ff00';
+    ctx.fillStyle = shipColor;
+    ctx.strokeStyle = shipColor;
     ctx.lineWidth = 2;
 
     // Draw triangle for ship
@@ -792,10 +816,20 @@ function GalaxyCanvas({
     ctx.stroke();
 
     // Draw label
-    ctx.fillStyle = '#00ff00';
+    ctx.fillStyle = shipColor;
     ctx.font = 'bold 12px monospace';
     ctx.textAlign = 'center';
     ctx.fillText(label, screenX, screenY - 15);
+
+    // Store for hit detection (for tooltips)
+    renderedObjectsRef.current.push({
+      type: 'ship',
+      data: ship,
+      coords: { x: x1, y: x2, z: parseFloat(ship.z || 0) },
+      screenX,
+      screenY,
+      hitRadius: 15 // Larger hit area for ships
+    });
   };
 
   const drawSensorRange = (ctx, shipLocation, sensorRange) => {
@@ -943,6 +977,14 @@ function GalaxyCanvas({
         return `📍 ${obj.data.name}\nControl: ${obj.data.controlledBy || 'None'}\nContested: ${obj.data.contested ? 'Yes' : 'No'}`;
       case 'system':
         return `⚙️ ${obj.data.name}\nType: ${obj.data.type || 'Unknown'}`;
+      case 'ship':
+        // Check if player has Advanced Sensor Array for detailed info
+        if (galaxyData?.hasAdvancedSensorArray) {
+          return `🚀 ${obj.data.ship_name || 'Unknown Vessel'}\nClass: ${obj.data.ship_class || 'Unknown'}\nOwner: ${obj.data.owner_name || 'Unknown'}\nDistance: ${obj.data.distance || '?'} ly`;
+        } else {
+          // Limited info without Advanced Sensor Array
+          return `🚀 Unknown Vessel\nDistance: ${obj.data.distance || '?'} ly`;
+        }
       default:
         return obj.data.name || 'Unknown';
     }
@@ -1325,7 +1367,10 @@ function GalaxyCanvas({
               {/* Object Header */}
               <div className="border-b border-cyan-700 pb-2">
                 <div className="text-green-400 font-mono text-lg font-bold">
-                  {selectedObject.data.name}
+                  {selectedObject.type === 'ship'
+                    ? (galaxyData?.hasAdvancedSensorArray ? (selectedObject.data.ship_name || 'Unknown Vessel') : 'Unknown Contact')
+                    : selectedObject.data.name
+                  }
                 </div>
                 <div className="text-cyan-400 font-mono text-xs uppercase mt-1">
                   {selectedObject.type}
@@ -1451,6 +1496,139 @@ function GalaxyCanvas({
                         💡 Double-click on map to isolate this system
                       </div>
                     </div>
+                  </>
+                )}
+
+                {selectedObject.type === 'ship' && (
+                  <>
+                    {galaxyData?.hasAdvancedSensorArray ? (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Name:</span>
+                          <span className="text-red-400 font-bold">{selectedObject.data.ship_name || 'Unknown Vessel'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Class:</span>
+                          <span className="text-cyan-300">{selectedObject.data.ship_class || 'Unknown'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Owner:</span>
+                          <span className="text-cyan-300">{selectedObject.data.owner_name || 'Unknown'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Distance:</span>
+                          <span className="text-yellow-400">{selectedObject.data.distance || '?'} ly</span>
+                        </div>
+
+                        {/* Armor Stats */}
+                        {(selectedObject.data.armor_rating || selectedObject.data.current_armor !== undefined) && (
+                          <div className="mt-3 pt-3 border-t border-cyan-800">
+                            <div className="text-cyan-300 text-xs font-bold mb-2">ARMOR</div>
+                            {selectedObject.data.armor_rating && (
+                              <div className="flex justify-between text-xs">
+                                <span className="text-gray-400">Rating:</span>
+                                <span className="text-cyan-300">{selectedObject.data.armor_rating}</span>
+                              </div>
+                            )}
+                            {selectedObject.data.current_armor !== undefined && (
+                              <div className="flex justify-between text-xs">
+                                <span className="text-gray-400">Integrity:</span>
+                                <span className={selectedObject.data.current_armor < selectedObject.data.max_armor * 0.5 ? 'text-red-400' : 'text-green-400'}>
+                                  {selectedObject.data.current_armor} / {selectedObject.data.max_armor}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Components */}
+                        {selectedObject.data.components && selectedObject.data.components.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-cyan-800">
+                            <div className="text-cyan-300 text-xs font-bold mb-2">COMPONENTS ({selectedObject.data.components.length})</div>
+                            <div className="max-h-32 overflow-y-auto space-y-1">
+                              {selectedObject.data.components.map((comp, idx) => (
+                                <div key={idx} className="flex justify-between text-xs">
+                                  <span className="text-gray-400">
+                                    • {comp.component_name}
+                                    {comp.is_advanced && <span className="text-purple-400 ml-1">[ADV]</span>}
+                                  </span>
+                                  <span className={comp.maintenance_enabled ? 'text-green-400' : 'text-red-400'}>
+                                    {comp.maintenance_enabled ? 'ON' : 'OFF'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Weapons */}
+                        {selectedObject.data.weapons && selectedObject.data.weapons.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-cyan-800">
+                            <div className="text-cyan-300 text-xs font-bold mb-2">WEAPONS ({selectedObject.data.weapons.length})</div>
+                            <div className="max-h-32 overflow-y-auto space-y-1">
+                              {selectedObject.data.weapons.map((weapon, idx) => (
+                                <div key={idx} className="text-xs">
+                                  <div className="flex justify-between">
+                                    <span className={weapon.is_damaged ? 'text-red-400' : 'text-gray-400'}>
+                                      • {weapon.weapon_name}
+                                      {weapon.weapon_type && <span className="text-gray-500 ml-1 text-[10px]">({weapon.weapon_type})</span>}
+                                    </span>
+                                    <span className="text-yellow-400">{weapon.damage_dice}</span>
+                                  </div>
+                                  {weapon.requires_ammo && (
+                                    <div className="flex justify-between pl-3 text-[10px]">
+                                      <span className="text-gray-500">Ammo:</span>
+                                      <span className={weapon.ammo_loaded ? 'text-green-400' : 'text-red-400'}>
+                                        {weapon.ammo_loaded ? 'Loaded' : 'Empty'}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Enhancements */}
+                        {selectedObject.data.enhancements && selectedObject.data.enhancements.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-cyan-800">
+                            <div className="text-cyan-300 text-xs font-bold mb-2">ENHANCEMENTS ({selectedObject.data.enhancements.length})</div>
+                            <div className="max-h-32 overflow-y-auto space-y-1">
+                              {selectedObject.data.enhancements.map((enh, idx) => (
+                                <div key={idx} className="text-xs">
+                                  <div className="text-purple-400">• {enh.enhancement_name}</div>
+                                  {enh.description && (
+                                    <div className="text-gray-500 pl-3 text-[10px] italic">{enh.description}</div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="mt-3 pt-3 border-t border-cyan-800">
+                          <div className="text-green-300 text-xs italic bg-green-900 bg-opacity-30 p-2 rounded border border-green-600">
+                            ✓ Advanced Sensor Array: Full ship data available
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Vessel:</span>
+                          <span className="text-red-400">Unknown Contact</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Distance:</span>
+                          <span className="text-yellow-400">{selectedObject.data.distance || '?'} ly</span>
+                        </div>
+                        <div className="mt-3 pt-3 border-t border-cyan-800">
+                          <div className="text-yellow-300 text-xs italic bg-yellow-900 bg-opacity-30 p-2 rounded border border-yellow-600">
+                            ⚠ Limited data: Install Advanced Sensor Array for detailed ship information
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </>
                 )}
 

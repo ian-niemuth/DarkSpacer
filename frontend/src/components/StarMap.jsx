@@ -16,6 +16,7 @@ function StarMap() {
 
   const [galaxyData, setGalaxyData] = useState(null);
   const [shipLocation, setShipLocation] = useState(null);
+  const [nearbyShips, setNearbyShips] = useState([]);
   const [memoryBankStatus, setMemoryBankStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [socket, setSocket] = useState(null);
@@ -41,6 +42,11 @@ function StarMap() {
       console.log('[StarMap] Galaxy data loaded:', response.data);
       setGalaxyData(response.data);
       setShipLocation(response.data.shipLocation);
+      setNearbyShips(response.data.nearbyShips || []);
+
+      if (response.data.nearbyShips?.length > 0) {
+        console.log(`[StarMap] Detected ${response.data.nearbyShips.length} nearby ships:`, response.data.nearbyShips);
+      }
     } catch (error) {
       console.error('Error fetching galaxy data:', error);
     }
@@ -86,6 +92,17 @@ function StarMap() {
       setShipLocation(location);
       // Refetch galaxy data to trigger auto-discovery and refresh sensor view
       fetchGalaxyData();
+    });
+
+    // Listen for nearby ship updates (components, weapons, etc.)
+    newSocket.on('nearby_ship_updated', (data) => {
+      console.log('[StarMap] Nearby ship updated:', data.shipId);
+      // Only refetch if the updated ship is NOT the current ship we're viewing
+      // (The current ship's updates are handled by 'ship_updated' event)
+      if (data.shipId && data.shipId.toString() !== shipId?.toString()) {
+        console.log('[StarMap] Refetching galaxy data for nearby ship update');
+        fetchGalaxyData();
+      }
     });
 
     newSocket.on('disconnect', () => {
@@ -222,13 +239,30 @@ function StarMap() {
         ← BACK TO SHIP
       </Link>
 
+      {/* Nearby Ships Indicator - Bottom Right (above zoom info) */}
+      {nearbyShips.length > 0 && (
+        <div className="absolute bottom-16 right-4 z-20 px-3 py-2 bg-red-900 bg-opacity-90 border-2 border-red-600 rounded font-mono shadow-lg shadow-red-500/30 max-w-xs">
+          <div className="text-red-300 text-sm font-bold">⚠️ CONTACTS DETECTED</div>
+          <div className="text-red-200 text-xs mt-1">
+            {nearbyShips.length} ship{nearbyShips.length > 1 ? 's' : ''} in sensor range
+          </div>
+          <div className="text-red-400 text-xs mt-2 space-y-0.5 max-h-32 overflow-y-auto">
+            {nearbyShips.map((ship, idx) => (
+              <div key={idx} className="truncate">
+                • {ship.ship_name} ({ship.distance} ly)
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Galaxy Map - Fullscreen */}
       {galaxyData ? (
         <GalaxyCanvas
           galaxyData={galaxyData}
           shipLocation={shipLocation}
-          showAllShips={false}
-          allShips={[]}
+          showAllShips={nearbyShips.length > 0}
+          allShips={nearbyShips}
         />
       ) : (
         <div className="flex items-center justify-center h-full">

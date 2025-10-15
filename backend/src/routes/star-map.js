@@ -11,7 +11,8 @@ const {
   hasAdvancedMemoryBank,
   getSensorRange,
   autoDiscoverInRange,
-  filterGalaxyByDiscovery
+  filterGalaxyByDiscovery,
+  calculateDistance
 } = require('../utils/discoveryHelpers');
 
 router.use(authenticateToken);
@@ -79,6 +80,31 @@ async function checkShipAccess(userId, shipId, isAdminUser) {
   `, [shipId, userId]);
 
   return result.rows.length > 0;
+}
+
+/**
+ * Check if ship has an online Advanced Sensor Array component
+ * Note: Advanced Sensor Array is a Sensor Array component with is_advanced = true
+ * @param {number} shipId - Ship ID to check
+ * @returns {Promise<boolean>}
+ */
+async function hasAdvancedSensorArray(shipId) {
+  try {
+    const result = await pool.query(`
+      SELECT sc.*
+      FROM ship_components sc
+      JOIN component_templates ct ON sc.component_template_id = ct.id
+      WHERE sc.ship_id = $1
+        AND LOWER(ct.name) = 'sensor array'
+        AND sc.is_advanced = true
+        AND sc.maintenance_enabled = true
+    `, [shipId]);
+
+    return result.rows.length > 0;
+  } catch (error) {
+    console.error('Error checking Advanced Sensor Array:', error);
+    return false;
+  }
 }
 
 // ============================================
@@ -265,10 +291,133 @@ router.get('/ship-view/:shipId', async (req, res) => {
     // Filter galaxy data based on ship's discoveries
     const filteredGalaxyData = await filterGalaxyByDiscovery(galaxyData, shipId, location);
 
+    // Get nearby ships within sensor range
+    const sensorRange = await getSensorRange(shipId);
+    const nearbyShips = [];
+
+    if (sensorRange > 0) {
+      // Get all other ships' locations
+      const allShipsResult = await pool.query(`
+        SELECT
+          s.id as ship_id,
+          s.name as ship_name,
+          s.ship_class,
+          s.owner_type,
+          s.ac as armor_rating,
+          s.hp_current as current_armor,
+          s.hp_max as max_armor,
+          CASE
+            WHEN s.owner_type = 'character' THEN c.name
+            WHEN s.owner_type = 'npc' AND s.owner_name IS NOT NULL THEN s.owner_name
+            WHEN s.owner_type = 'npc' THEN 'Unknown'
+            ELSE 'Unknown Ship'
+          END as owner_name,
+          sl.x,
+          sl.y,
+          sl.z
+        FROM ships s
+        LEFT JOIN ship_locations sl ON s.id = sl.ship_id
+        LEFT JOIN characters c ON s.owner_type = 'character' AND s.owner_id = c.id
+        WHERE s.id != $1
+          AND sl.x IS NOT NULL
+      `, [shipId]);
+
+      // Check if player has Advanced Sensor Array for detailed scanning
+      const hasAdvancedSensors = await hasAdvancedSensorArray(shipId);
+
+      // Filter ships by sensor range and add detailed data if Advanced Sensor Array
+      for (const ship of allShipsResult.rows) {
+        try {
+          const shipCoords = { x: ship.x, y: ship.y, z: ship.z };
+          const distance = calculateDistance(location, shipCoords);
+
+          if (distance <= sensorRange) {
+            const shipData = {
+              ...ship,
+              distance: distance.toFixed(2),
+              inSensorRange: true
+            };
+
+            // If Advanced Sensor Array, get detailed ship information
+            if (hasAdvancedSensors) {
+              try {
+                // Get components
+                const componentsResult = await pool.query(`
+                  SELECT
+                    ct.name as component_name,
+                    sc.is_advanced,
+                    sc.maintenance_enabled
+                  FROM ship_components sc
+                  JOIN component_templates ct ON sc.component_template_id = ct.id
+                  WHERE sc.ship_id = $1
+                  ORDER BY ct.name
+                `, [ship.ship_id]);
+
+                // Get weapons (need to join through ship_weapons_arrays)
+                const weaponsResult = await pool.query(`
+                  SELECT
+                    wt.name as weapon_name,
+                    wt.category as weapon_type,
+                    wt.damage as damage_dice,
+                    sw.is_damaged,
+                    sw.requires_ammo,
+                    sw.ammo_loaded
+                  FROM ship_weapons sw
+                  JOIN ship_weapons_arrays swa ON sw.weapons_array_id = swa.id
+                  JOIN weapon_templates wt ON sw.weapon_template_id = wt.id
+                  WHERE swa.ship_id = $1
+                  ORDER BY sw.array_position, wt.name
+                `, [ship.ship_id]);
+
+                // Get enhancements
+                const enhancementsResult = await pool.query(`
+                  SELECT
+                    et.name as enhancement_name,
+                    et.description
+                  FROM ship_enhancements se
+                  JOIN enhancement_templates et ON se.enhancement_template_id = et.id
+                  WHERE se.ship_id = $1
+                  ORDER BY et.name
+                `, [ship.ship_id]);
+
+                shipData.components = componentsResult.rows;
+                shipData.weapons = weaponsResult.rows;
+                shipData.enhancements = enhancementsResult.rows;
+              } catch (detailError) {
+                console.error(`[star-map] Error fetching details for ship ${ship.ship_id}:`, detailError);
+                // Continue without detailed data if there's an error
+                shipData.components = [];
+                shipData.weapons = [];
+                shipData.enhancements = [];
+              }
+            }
+
+            nearbyShips.push(shipData);
+          }
+        } catch (shipError) {
+          console.error(`[star-map] Error processing ship ${ship.ship_id}:`, shipError);
+          // Continue with next ship
+        }
+      }
+
+      console.log(`[star-map] Ship ${shipId} detected ${nearbyShips.length} nearby ships within ${sensorRange} ly`);
+    }
+
+    // Add nearby ships to response
+    filteredGalaxyData.nearbyShips = nearbyShips;
+
+    // Check if ship has Advanced Sensor Array (for detailed ship tooltips)
+    const hasAdvancedSensors = await hasAdvancedSensorArray(shipId);
+    filteredGalaxyData.hasAdvancedSensorArray = hasAdvancedSensors;
+
     res.json(filteredGalaxyData);
   } catch (error) {
-    console.error('Error fetching ship galaxy view:', error);
-    res.status(500).json({ error: 'Failed to fetch galaxy data' });
+    console.error('[star-map] Error fetching ship galaxy view:', error);
+    console.error('[star-map] Error stack:', error.stack);
+    res.status(500).json({
+      error: 'Failed to fetch galaxy data',
+      details: error.message
+    });
   }
 });
 
@@ -384,17 +533,74 @@ router.get('/galaxy-data', isAdmin, async (req, res) => {
 // ============================================
 router.get('/all-ships', isAdmin, async (req, res) => {
   try {
+    // Get all ships with their locations (create default location if missing)
     const result = await pool.query(`
       SELECT
-        sl.*,
+        s.id as ship_id,
         s.name as ship_name,
         s.ship_class,
-        c.name as owner_name
-      FROM ship_locations sl
-      JOIN ships s ON sl.ship_id = s.id
-      LEFT JOIN characters c ON s.owner_id = c.id
+        s.owner_type,
+        CASE
+          WHEN s.owner_type = 'character' THEN c.name
+          WHEN s.owner_type = 'npc' AND s.owner_name IS NOT NULL THEN s.owner_name
+          WHEN s.owner_type = 'npc' THEN 'NPC Ship'
+          ELSE 'Party Ship'
+        END as owner_name,
+        COALESCE(sl.x, 0) as x,
+        COALESCE(sl.y, 0) as y,
+        COALESCE(sl.z, 0) as z,
+        sl.current_region_id,
+        sl.current_sector_id,
+        sl.current_system_id,
+        sl.last_updated
+      FROM ships s
+      LEFT JOIN ship_locations sl ON s.id = sl.ship_id
+      LEFT JOIN characters c ON s.owner_type = 'character' AND s.owner_id = c.id
       ORDER BY s.name
     `);
+
+    // Initialize missing ship locations
+    const shipsWithoutLocation = result.rows.filter(row => !row.last_updated);
+
+    if (shipsWithoutLocation.length > 0) {
+      console.log(`[star-map] Initializing locations for ${shipsWithoutLocation.length} ships`);
+
+      for (const ship of shipsWithoutLocation) {
+        await pool.query(`
+          INSERT INTO ship_locations (ship_id, x, y, z)
+          VALUES ($1, 0, 0, 0)
+          ON CONFLICT (ship_id) DO NOTHING
+        `, [ship.ship_id]);
+      }
+
+      // Refetch to get the updated last_updated timestamps
+      const updatedResult = await pool.query(`
+        SELECT
+          s.id as ship_id,
+          s.name as ship_name,
+          s.ship_class,
+          s.owner_type,
+          CASE
+            WHEN s.owner_type = 'character' THEN c.name
+            WHEN s.owner_type = 'npc' AND s.owner_name IS NOT NULL THEN s.owner_name
+            WHEN s.owner_type = 'npc' THEN 'NPC Ship'
+            ELSE 'Party Ship'
+          END as owner_name,
+          sl.x,
+          sl.y,
+          sl.z,
+          sl.current_region_id,
+          sl.current_sector_id,
+          sl.current_system_id,
+          sl.last_updated
+        FROM ships s
+        LEFT JOIN ship_locations sl ON s.id = sl.ship_id
+        LEFT JOIN characters c ON s.owner_type = 'character' AND s.owner_id = c.id
+        ORDER BY s.name
+      `);
+
+      return res.json(updatedResult.rows);
+    }
 
     res.json(result.rows);
   } catch (error) {

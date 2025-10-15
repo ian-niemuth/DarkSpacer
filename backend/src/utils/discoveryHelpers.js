@@ -155,10 +155,12 @@ async function filterGalaxyByDiscovery(galaxyData, shipId, shipLocation) {
   // If Advanced Memory Bank, return everything (current behavior)
   if (hasAdvanced) {
     console.log(`[Discovery] Ship ${shipId} has Advanced Memory Bank - returning all data`);
+    // Still get sensor range for display purposes (sensor range circle)
+    const sensorRange = await getSensorRange(shipId);
     return {
       ...galaxyData,
       hasAdvancedMemoryBank: true,
-      sensorRange: 0,
+      sensorRange: sensorRange,
       discoveries: { regions: [], sectors: [], systems: [], stars: [], planets: [], hazards: [] }
     };
   }
@@ -207,20 +209,29 @@ async function filterGalaxyByDiscovery(galaxyData, shipId, shipLocation) {
     sensorRange,
     discoveries,
 
-    // Regions - always visible but with discovery levels
-    regions: galaxyData.regions?.map(r => ({
+    // Regions - filter by discovery/sensor range
+    regions: galaxyData.regions?.filter(r => {
+      const level = getDiscoveryLevel('region', r.id, r.coordinates);
+      return level > 0; // Show only if discovered or in range
+    }).map(r => ({
       ...r,
       discoveryLevel: getDiscoveryLevel('region', r.id, r.coordinates)
     })) || [],
 
-    // Sectors - always visible but with discovery levels
-    sectors: galaxyData.sectors?.map(s => ({
+    // Sectors - filter by discovery/sensor range
+    sectors: galaxyData.sectors?.filter(s => {
+      const level = getDiscoveryLevel('sector', s.id, s.coordinates);
+      return level > 0; // Show only if discovered or in range
+    }).map(s => ({
       ...s,
       discoveryLevel: getDiscoveryLevel('sector', s.id, s.coordinates)
     })) || [],
 
-    // Systems - show all but mark discovery levels
-    systems: galaxyData.systems?.map(sys => ({
+    // Systems - filter by discovery/sensor range
+    systems: galaxyData.systems?.filter(sys => {
+      const level = getDiscoveryLevel('system', sys.id, sys.coordinates);
+      return level > 0; // Show only if discovered or in range
+    }).map(sys => ({
       ...sys,
       discoveryLevel: getDiscoveryLevel('system', sys.id, sys.coordinates),
       stars: isDiscovered('system', sys.id) ? sys.stars : [] // Hide stars unless system discovered

@@ -234,7 +234,7 @@ function Dashboard({ user }) {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 sm:mb-8">
         <h1 className="text-2xl sm:text-3xl font-bold text-white">Your Spacers</h1>
-        
+
         {/* Mobile: Stack buttons vertically, Desktop: Wrap horizontally */}
         <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-3">
           {/* Catalog Buttons */}
@@ -250,7 +250,7 @@ function Dashboard({ user }) {
           >
             ⚔️ Gear Catalog
           </Link>
-          
+
           {/* Other Navigation */}
           <Link
             to="/ships"

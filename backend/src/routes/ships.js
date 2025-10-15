@@ -123,17 +123,19 @@ router.use(authenticateToken);
 router.get('/', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT 
+      SELECT
         s.*,
-        CASE 
+        CASE
           WHEN s.owner_type = 'character' THEN c.name
+          WHEN s.owner_type = 'npc' AND s.owner_name IS NOT NULL THEN s.owner_name
+          WHEN s.owner_type = 'npc' THEN 'Unknown'
           ELSE 'Party Ship'
-        END as owner_name
+        END as owner_display_name
       FROM ships s
       LEFT JOIN characters c ON s.owner_type = 'character' AND s.owner_id = c.id
       ORDER BY s.created_at DESC
     `);
-    
+
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching ships:', error);
@@ -160,16 +162,17 @@ router.get('/player', async (req, res) => {
     }
     
     // Get ships owned by player's characters OR ships where player's character is crew
+    // NOTE: NPC ships are excluded from player view (only visible to DM)
     const result = await pool.query(`
       SELECT DISTINCT s.*,
-        CASE 
+        CASE
           WHEN s.owner_type = 'character' THEN c.name
           ELSE 'Party Ship'
-        END as owner_name
+        END as owner_display_name
       FROM ships s
       LEFT JOIN characters c ON s.owner_type = 'character' AND s.owner_id = c.id
       LEFT JOIN ship_crew_assignments sca ON s.id = sca.ship_id
-      WHERE 
+      WHERE
         (s.owner_type = 'character' AND s.owner_id = ANY($1))
         OR s.owner_type = 'party'
         OR sca.character_id = ANY($1)
@@ -280,6 +283,7 @@ router.post('/', async (req, res) => {
       ship_class,
       owner_type = 'party',
       owner_id = null,
+      owner_name = null,
       strength = 10,
       dexterity = 10,
       constitution = 10,
@@ -295,24 +299,24 @@ router.post('/', async (req, res) => {
       description = '',
       notes = ''
     } = req.body;
-    
+
     const result = await pool.query(`
       INSERT INTO ships (
-        name, ship_class, owner_type, owner_id,
+        name, ship_class, owner_type, owner_id, owner_name,
         strength, dexterity, constitution, intelligence, wisdom, charisma,
         hp_current, hp_max, level, movement,
         system_slots_used, system_slots_max, feature_slots_used, feature_slots_max, purchase_price,
         description, notes
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $12, $13, 0, $14, 0, $15, $16, $17, $18)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, $13, $14, 0, $15, 0, $16, $17, $18, $19)
       RETURNING *
     `, [
-      name, ship_class, owner_type, owner_id,
+      name, ship_class, owner_type, owner_id, owner_name,
       strength, dexterity, constitution, intelligence, wisdom, charisma,
       hp_max, level, movement,
       system_slots_max, feature_slots_max, purchase_price,
       description, notes
     ]);
-    
+
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Error creating ship:', error);
@@ -327,7 +331,7 @@ router.put('/:id', async (req, res) => {
     const updates = req.body;
 
     const allowedFields = [
-      'name', 'ship_class', 'owner_type', 'owner_id',
+      'name', 'ship_class', 'owner_type', 'owner_id', 'owner_name',
       'strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma',
       'ac', 'hp_current', 'hp_max', 'level', 'movement',
       'system_slots_max', 'feature_slots_max', 'cargo_capacity', 'purchase_price',
@@ -612,11 +616,17 @@ router.put('/:shipId/components/:componentId/maintenance', async (req, res) => {
       return res.status(404).json({ error: 'Component not found' });
     }
 
-    // Emit socket event
+    // Emit socket event to ship's own room
     const io = req.app.get('io');
     io.to(`ship_${shipId}`).emit('ship_updated', {
       message: 'Component maintenance status updated',
       shipId: shipId
+    });
+
+    // Also emit a global event for nearby ship updates (for sensor scans)
+    io.emit('nearby_ship_updated', {
+      shipId: shipId,
+      message: 'Nearby ship updated'
     });
 
     res.json(result.rows[0]);

@@ -490,17 +490,18 @@ router.post('/characters/:id/xp', async (req, res) => {
 router.get('/ships', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT 
+      SELECT
         s.*,
-        CASE 
+        CASE
           WHEN s.owner_type = 'character' THEN c.name
+          WHEN s.owner_type = 'npc' THEN 'NPC Ship'
           ELSE 'Party Ship'
         END as owner_name
       FROM ships s
       LEFT JOIN characters c ON s.owner_type = 'character' AND s.owner_id = c.id
       ORDER BY s.created_at DESC
     `);
-    
+
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching ships:', error);

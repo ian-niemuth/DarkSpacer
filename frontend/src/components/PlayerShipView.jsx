@@ -8,6 +8,21 @@ import io from 'socket.io-client';
 
 const API_URL = `${BASE_API_URL}/player-ships`;
 
+// Crew Role Descriptions
+const CREW_ROLE_DESCRIPTIONS = {
+  'Captain': 'You are responsible and answer for a ship. This may or may not be the same position as the pilot.',
+  'Pilot': 'You are responsible for maneuvering the ship.',
+  'Co-Pilot': 'You assist as an additional pilot or gunner.',
+  'Gunner': 'You are responsible for firing a weapon.',
+  'Astrogator': 'You are responsible for making astrogation calculations.',
+  'Chaplain': 'The spiritual guide of the ship. Can act as a counselor or negotiator.',
+  'Cook': 'You are responsible for feeding the crew. Having a cook means not living off of rations.',
+  'Engineer': 'You are responsible for the maintenance and repair of the ship.',
+  'Medic': 'You are responsible for the crew\'s health.',
+  'Quartermaster': 'You are responsible for the cargo and ship accounts.',
+  'Salvage Engineer': 'A polite term for experts who take apart damaged and scrapped ships.'
+};
+
 function PlayerShipView({ user }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -179,7 +194,7 @@ function ShipDetails({ ship, activeTab, setActiveTab, viewMode, setViewMode, use
       {/* Ship Header */}
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
         <div className="flex justify-between items-start mb-4">
-          <div>
+          <div className="flex-1">
             <h2 className="text-2xl font-bold text-white">{ship.name}</h2>
             <div className="text-sm text-gray-400 mt-1">
               {ship.owner_name}
@@ -187,6 +202,11 @@ function ShipDetails({ ship, activeTab, setActiveTab, viewMode, setViewMode, use
                 <span className="ml-2 text-blue-400">• Your Role: {ship.user_role}</span>
               )}
             </div>
+            {ship.user_role && CREW_ROLE_DESCRIPTIONS[ship.user_role] && (
+              <div className="mt-2 text-xs text-gray-300 bg-gray-700 bg-opacity-50 rounded px-3 py-2 max-w-2xl">
+                <span className="font-bold text-blue-400">{ship.user_role}:</span> {CREW_ROLE_DESCRIPTIONS[ship.user_role]}
+              </div>
+            )}
           </div>
           
           {/* View Mode Toggle & Star Map */}
@@ -712,7 +732,7 @@ function CrewTab({ ship }) {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {ship.crew.map((member) => (
         <div key={member.id} className="bg-gray-700 rounded p-4">
           <div className="font-bold text-white">{member.character_name || 'Unknown'}</div>
@@ -722,6 +742,11 @@ function CrewTab({ ship }) {
               <span className="ml-2 text-xs bg-green-600 px-2 py-0.5 rounded">PRIMARY</span>
             )}
           </div>
+          {member.crew_role && CREW_ROLE_DESCRIPTIONS[member.crew_role] && (
+            <div className="mt-2 text-xs text-gray-300 bg-gray-800 rounded px-3 py-2">
+              <span className="font-bold text-blue-400">{member.crew_role}:</span> {CREW_ROLE_DESCRIPTIONS[member.crew_role]}
+            </div>
+          )}
         </div>
       ))}
     </div>

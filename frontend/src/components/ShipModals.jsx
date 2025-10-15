@@ -725,12 +725,13 @@ export function CreateShipModal({ onClose, onSuccess, showError }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
-    
+
     const shipData = {
       name: formData.get('name'),
       ship_class: formData.get('ship_class'),
       owner_type: formData.get('owner_type'),
       owner_id: formData.get('owner_type') === 'character' ? parseInt(formData.get('owner_id')) : null,
+      owner_name: formData.get('owner_type') === 'npc' ? formData.get('owner_name') : null,
       strength: parseInt(formData.get('strength')),
       dexterity: parseInt(formData.get('dexterity')),
       constitution: parseInt(formData.get('constitution')),
@@ -801,11 +802,14 @@ export function CreateShipModal({ onClose, onSuccess, showError }) {
                   className="w-full bg-gray-600 text-white rounded px-3 py-2"
                   onChange={(e) => {
                     const ownerIdField = document.getElementById('owner_id_field');
+                    const ownerNameField = document.getElementById('owner_name_field');
                     ownerIdField.style.display = e.target.value === 'character' ? 'block' : 'none';
+                    ownerNameField.style.display = e.target.value === 'npc' ? 'block' : 'none';
                   }}
                 >
                   <option value="party">Party Ship</option>
                   <option value="character">Character Owned</option>
+                  <option value="npc">NPC/Enemy Ship</option>
                 </select>
               </div>
               <div id="owner_id_field" style={{ display: 'none' }}>
@@ -820,6 +824,15 @@ export function CreateShipModal({ onClose, onSuccess, showError }) {
                     </option>
                   ))}
                 </select>
+              </div>
+              <div id="owner_name_field" style={{ display: 'none' }}>
+                <label className="block text-gray-300 text-sm mb-1">Owner Name</label>
+                <input
+                  type="text"
+                  name="owner_name"
+                  placeholder="Pirate Captain, Trade Consortium, etc."
+                  className="w-full bg-gray-600 text-white rounded px-3 py-2"
+                />
               </div>
             </div>
           </div>
