@@ -42,7 +42,10 @@ function ShipCargoTab({
 
   // Socket.io connection for real-time updates
   useEffect(() => {
-    const newSocket = io(WS_URL);
+    const token = localStorage.getItem('token');
+    const newSocket = io(WS_URL, {
+      auth: { token }
+    });
     setSocket(newSocket);
 
     newSocket.emit('join_ship_room', ship.id);

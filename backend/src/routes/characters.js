@@ -234,26 +234,26 @@ router.put('/:id', async (req, res) => {
     const setFields = [];
     const values = [];
     let paramCount = 1;
-    
+
     for (const field of allowedFields) {
       if (updates[field] !== undefined) {
-        setFields.push(`${field} = ${paramCount}`);
+        setFields.push(`${field} = $${paramCount}`);
         values.push(updates[field]);
         paramCount++;
       }
     }
-    
+
     if (setFields.length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' });
     }
-    
+
     setFields.push(`updated_at = CURRENT_TIMESTAMP`);
     values.push(id, req.user.userId);
-    
+
     const query = `
-      UPDATE characters 
+      UPDATE characters
       SET ${setFields.join(', ')}
-      WHERE id = ${paramCount} AND user_id = ${paramCount + 1}
+      WHERE id = $${paramCount} AND user_id = $${paramCount + 1}
       RETURNING *
     `;
     
