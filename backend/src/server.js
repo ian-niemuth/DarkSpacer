@@ -3,7 +3,37 @@ const express = require('express');
 const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
+
+// Validate required environment variables at startup
+const requiredEnvVars = [
+  'JWT_SECRET',
+  'DB_HOST',
+  'DB_PORT',
+  'DB_USER',
+  'DB_PASSWORD',
+  'DB_NAME'
+];
+
+const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+if (missingEnvVars.length > 0) {
+  console.error('❌ Missing required environment variables:');
+  missingEnvVars.forEach(varName => {
+    console.error(`   - ${varName}`);
+  });
+  console.error('\nPlease set these variables in your .env file');
+  process.exit(1);
+}
+
+// Validate JWT_SECRET is strong enough
+if (process.env.JWT_SECRET.length < 32) {
+  console.error('❌ JWT_SECRET must be at least 32 characters long for security');
+  process.exit(1);
+}
+
+console.log('✅ Environment variables validated');
 
 const { apiLimiter } = require('./middleware/security');
 
@@ -92,22 +122,74 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'DarkSpace Campaign Manager API' });
 });
 
+// Socket.IO authentication middleware
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+
+  if (!token) {
+    return next(new Error('Authentication error: No token provided'));
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    socket.user = decoded; // Attach user info to socket
+    next();
+  } catch (error) {
+    return next(new Error('Authentication error: Invalid token'));
+  }
+});
+
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
-  
-  socket.on('join_character', (characterId) => {
-    socket.join(`character_${characterId}`);
-    console.log(`Socket ${socket.id} joined character_${characterId}`);
+  console.log('Client connected:', socket.id, 'User:', socket.user.username);
+
+  socket.on('join_character', async (characterId) => {
+    try {
+      // Verify user owns this character or is admin
+      const result = await pool.query(
+        'SELECT id FROM characters WHERE id = $1 AND (user_id = $2 OR $3 = true)',
+        [characterId, socket.user.userId, socket.user.isAdmin || false]
+      );
+
+      if (result.rows.length === 0) {
+        socket.emit('error', { message: 'Access denied: Character not found or not owned by you' });
+        return;
+      }
+
+      socket.join(`character_${characterId}`);
+      console.log(`Socket ${socket.id} (${socket.user.username}) joined character_${characterId}`);
+    } catch (error) {
+      console.error('Error joining character room:', error);
+      socket.emit('error', { message: 'Failed to join character room' });
+    }
   });
 
-  socket.on('join_ship_room', (shipId) => {
-    socket.join(`ship_${shipId}`);
-    console.log(`Socket ${socket.id} joined ship_${shipId}`);
+  socket.on('join_ship_room', async (shipId) => {
+    try {
+      // Verify user has a character that is crew on this ship or is admin
+      const result = await pool.query(
+        `SELECT s.id FROM ships s
+         JOIN ship_crew sc ON s.id = sc.ship_id
+         JOIN characters c ON sc.character_id = c.id
+         WHERE s.id = $1 AND (c.user_id = $2 OR $3 = true)`,
+        [shipId, socket.user.userId, socket.user.isAdmin || false]
+      );
+
+      if (result.rows.length === 0) {
+        socket.emit('error', { message: 'Access denied: Not a crew member of this ship' });
+        return;
+      }
+
+      socket.join(`ship_${shipId}`);
+      console.log(`Socket ${socket.id} (${socket.user.username}) joined ship_${shipId}`);
+    } catch (error) {
+      console.error('Error joining ship room:', error);
+      socket.emit('error', { message: 'Failed to join ship room' });
+    }
   });
 
   socket.on('leave_ship_room', (shipId) => {
     socket.leave(`ship_${shipId}`);
-    console.log(`Socket ${socket.id} left ship_${shipId}`);
+    console.log(`Socket ${socket.id} (${socket.user.username}) left ship_${shipId}`);
   });
 
   socket.on('disconnect', () => {

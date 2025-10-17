@@ -57,10 +57,19 @@ function App() {
     fetchDmUnreadCount();
 
     // Setup socket to listen for new player messages
-    const socket = io(WS_URL);
+    const token = localStorage.getItem('token');
+    const socket = io(WS_URL, {
+      auth: {
+        token: token
+      }
+    });
 
     socket.on('connect', () => {
       console.log('[App] DM Socket connected');
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('[App] Socket connection error:', error.message);
     });
 
     socket.on('new_message', (msg) => {

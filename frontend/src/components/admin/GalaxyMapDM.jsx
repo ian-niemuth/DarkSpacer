@@ -73,7 +73,10 @@ function GalaxyMapDM() {
     });
 
     // Setup socket for real-time updates
-    const newSocket = io(WS_URL);
+    const token = localStorage.getItem('token');
+    const newSocket = io(WS_URL, {
+      auth: { token }
+    });
     setSocket(newSocket);
 
     newSocket.on('connect', () => {

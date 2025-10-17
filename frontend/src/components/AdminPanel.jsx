@@ -25,7 +25,10 @@ function AdminPanel() {
     fetchAllCharacters();
 
     // Connect to socket.io for real-time updates
-    const newSocket = io(WS_URL);
+    const token = localStorage.getItem('token');
+    const newSocket = io(WS_URL, {
+      auth: { token }
+    });
     setSocket(newSocket);
 
     // Listen for admin refresh event (broadcasted from all admin actions)

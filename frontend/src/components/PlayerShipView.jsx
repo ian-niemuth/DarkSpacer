@@ -38,7 +38,10 @@ function PlayerShipView({ user }) {
     fetchMyShips();
 
     // Setup socket.io
-    const newSocket = io(WS_URL);
+    const token = localStorage.getItem('token');
+    const newSocket = io(WS_URL, {
+      auth: { token }
+    });
     setSocket(newSocket);
 
     // Listen for ship updates

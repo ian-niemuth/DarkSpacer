@@ -198,9 +198,12 @@ function CharacterSheet() {
     fetchAvailableAmmo();
     checkCommunicatorPower();
 
-    const newSocket = io(WS_URL);
+    const token = localStorage.getItem('token');
+    const newSocket = io(WS_URL, {
+      auth: { token }
+    });
     setSocket(newSocket);
-    
+
     newSocket.emit('join_character', id);
     
     newSocket.on('character_updated', (data) => {

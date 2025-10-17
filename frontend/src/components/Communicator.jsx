@@ -71,7 +71,10 @@ function Communicator() {
 
     // Always set up socket for real-time updates (even if offline)
     // This allows us to detect when power is restored or lost
-    const newSocket = io(WS_URL);
+    const token = localStorage.getItem('token');
+    const newSocket = io(WS_URL, {
+      auth: { token }
+    });
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
