@@ -62,6 +62,15 @@ router.post('/award-xp', isAdmin, async (req, res) => {
         [charId, xpAmount, reason || 'XP Award', req.user.userId]
       );
       
+      // Emit socket event to notify character's socket room
+      const io = req.app.get('io');
+      io.to(`character_${charId}`).emit('character_updated', {
+        characterId: charId,
+        xp: newXP,
+        canLevelUp: newXP >= xpRequired && character.level < 10,
+        message: `You gained ${xpAmount} XP! ${reason || ''}`
+      });
+
       results.push({
         characterId: charId,
         characterName: character.name,
@@ -71,7 +80,11 @@ router.post('/award-xp', isAdmin, async (req, res) => {
         canLevelUp: newXP >= xpRequired
       });
     }
-    
+
+    // Notify admin panel to refresh
+    const io = req.app.get('io');
+    io.emit('admin_refresh');
+
     res.json({
       message: `Awarded ${xpAmount} XP to ${characterIds.length} character(s)`,
       results

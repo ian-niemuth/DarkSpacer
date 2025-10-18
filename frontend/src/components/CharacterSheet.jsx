@@ -206,12 +206,17 @@ function CharacterSheet() {
 
     newSocket.emit('join_character', id);
     
-    newSocket.on('character_updated', (data) => {
+    newSocket.on('character_updated', async (data) => {
       // Only show notification if not a silent update (e.g., HP changes)
       if (!data.silent && data.message) {
         addToast(data.message, 'success');
       }
-      fetchCharacter();
+      await fetchCharacter();
+
+      // If canLevelUp is provided in the socket data, update it directly
+      if (data.canLevelUp !== undefined) {
+        setCanLevelUp(data.canLevelUp);
+      }
     });
     
     newSocket.on('item_received', (data) => {

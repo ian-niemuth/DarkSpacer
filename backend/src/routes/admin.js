@@ -73,6 +73,11 @@ async function calculateAC(characterId) {
 router.use(authenticateToken);
 router.use(isAdmin);
 
+// Helper function: Get XP requirements for next level
+function getXPRequired(currentLevel) {
+  return currentLevel * 10;
+}
+
 // Helper function: Calculate current inventory slots used for a character
 async function calculateSlotsUsed(characterId) {
   const result = await pool.query(`
@@ -463,11 +468,16 @@ router.post('/characters/:id/xp', async (req, res) => {
     );
     
     const character = result.rows[0];
-    
+
+    // Calculate if character can level up
+    const xpRequired = getXPRequired(character.level);
+    const canLevelUp = character.xp >= xpRequired && character.level < 10;
+
     const io = req.app.get('io');
     io.to(`character_${id}`).emit('character_updated', {
       characterId: id,
       xp: character.xp,
+      canLevelUp: canLevelUp,
       message: `You gained ${xp} XP! ${reason || ''}`
     });
     io.emit('admin_refresh'); // Notify admin panel
