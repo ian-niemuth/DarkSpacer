@@ -498,4 +498,177 @@ router.post('/:id/transfer-credits', async (req, res) => {
   }
 });
 
+// ==================== CHARACTER NOTES ROUTES ====================
+
+// GET - Get all notes for a character (private to character owner only)
+router.get('/:characterId/notes', async (req, res) => {
+  try {
+    const { characterId } = req.params;
+
+    // Verify user owns this character (notes are private, not visible to admin)
+    const charCheck = await pool.query(
+      'SELECT id FROM characters WHERE id = $1 AND user_id = $2',
+      [characterId, req.user.userId]
+    );
+
+    if (charCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    // Get all notes for this character, newest first
+    const result = await pool.query(
+      `SELECT id, character_id, content, created_at, updated_at
+       FROM character_notes
+       WHERE character_id = $1
+       ORDER BY created_at DESC`,
+      [characterId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching notes:', error);
+    res.status(500).json({ error: 'Failed to fetch notes' });
+  }
+});
+
+// POST - Create a new note
+router.post('/:characterId/notes', async (req, res) => {
+  try {
+    const { characterId } = req.params;
+    const { content } = req.body;
+
+    if (!content || content.trim() === '') {
+      return res.status(400).json({ error: 'Note content is required' });
+    }
+
+    // Verify user owns this character
+    const charCheck = await pool.query(
+      'SELECT id FROM characters WHERE id = $1 AND user_id = $2',
+      [characterId, req.user.userId]
+    );
+
+    if (charCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    // Create the note
+    const result = await pool.query(
+      `INSERT INTO character_notes (character_id, content)
+       VALUES ($1, $2)
+       RETURNING id, character_id, content, created_at, updated_at`,
+      [characterId, content.trim()]
+    );
+
+    // Emit socket event for real-time updates
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`character_${characterId}`).emit('notes_updated', {
+        action: 'created',
+        note: result.rows[0]
+      });
+    }
+
+    res.status(201).json({
+      message: 'Note created successfully',
+      note: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error creating note:', error);
+    res.status(500).json({ error: 'Failed to create note' });
+  }
+});
+
+// PUT - Update an existing note
+router.put('/:characterId/notes/:noteId', async (req, res) => {
+  try {
+    const { characterId, noteId } = req.params;
+    const { content } = req.body;
+
+    if (!content || content.trim() === '') {
+      return res.status(400).json({ error: 'Note content is required' });
+    }
+
+    // Verify user owns this character
+    const charCheck = await pool.query(
+      'SELECT id FROM characters WHERE id = $1 AND user_id = $2',
+      [characterId, req.user.userId]
+    );
+
+    if (charCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    // Update the note
+    const result = await pool.query(
+      `UPDATE character_notes
+       SET content = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2 AND character_id = $3
+       RETURNING id, character_id, content, created_at, updated_at`,
+      [content.trim(), noteId, characterId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+
+    // Emit socket event for real-time updates
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`character_${characterId}`).emit('notes_updated', {
+        action: 'updated',
+        note: result.rows[0]
+      });
+    }
+
+    res.json({
+      message: 'Note updated successfully',
+      note: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error updating note:', error);
+    res.status(500).json({ error: 'Failed to update note' });
+  }
+});
+
+// DELETE - Delete a note
+router.delete('/:characterId/notes/:noteId', async (req, res) => {
+  try {
+    const { characterId, noteId } = req.params;
+
+    // Verify user owns this character
+    const charCheck = await pool.query(
+      'SELECT id FROM characters WHERE id = $1 AND user_id = $2',
+      [characterId, req.user.userId]
+    );
+
+    if (charCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    // Delete the note
+    const result = await pool.query(
+      'DELETE FROM character_notes WHERE id = $1 AND character_id = $2 RETURNING id',
+      [noteId, characterId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+
+    // Emit socket event for real-time updates
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`character_${characterId}`).emit('notes_updated', {
+        action: 'deleted',
+        noteId: noteId
+      });
+    }
+
+    res.json({ message: 'Note deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting note:', error);
+    res.status(500).json({ error: 'Failed to delete note' });
+  }
+});
+
 module.exports = router;
