@@ -122,12 +122,6 @@ function CharacterSheet() {
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [communicatorPowered, setCommunicatorPowered] = useState(null); // null = loading, true/false = status
 
-  // Notes states
-  const [notes, setNotes] = useState([]);
-  const [newNoteContent, setNewNoteContent] = useState('');
-  const [editingNoteId, setEditingNoteId] = useState(null);
-  const [editNoteContent, setEditNoteContent] = useState('');
-
   // Toast notification system
   const addToast = (message, type = 'success') => {
     const id = Date.now() + Math.random(); // Unique ID
@@ -203,7 +197,6 @@ function CharacterSheet() {
     fetchUnreadCount();
     fetchAvailableAmmo();
     checkCommunicatorPower();
-    fetchNotes();
 
     const token = localStorage.getItem('token');
     const newSocket = io(WS_URL, {
@@ -249,11 +242,6 @@ function CharacterSheet() {
       fetchEquippedGear(); // Explicitly refresh equipped gear
       fetchAvailableCells(); // Explicitly refresh available cells
       fetchAvailableAmmo(); // Explicitly refresh available ammo
-    });
-
-    newSocket.on('notes_updated', (data) => {
-      // Real-time update when notes are added/edited/deleted
-      fetchNotes();
     });
 
     newSocket.on('equipment_changed', (data) => {
@@ -452,84 +440,6 @@ function CharacterSheet() {
     } catch (error) {
       console.error('Error fetching party members:', error);
     }
-  };
-
-  // ==================== NOTES FUNCTIONS ====================
-  const fetchNotes = async () => {
-    try {
-      const response = await api.get(`${API_URL}/characters/${id}/notes`);
-      setNotes(response.data);
-    } catch (error) {
-      console.error('Error fetching notes:', error);
-    }
-  };
-
-  const handleAddNote = async () => {
-    if (!newNoteContent.trim()) return;
-
-    try {
-      await api.post(`${API_URL}/characters/${id}/notes`, {
-        content: newNoteContent
-      });
-      setNewNoteContent('');
-      fetchNotes();
-      addToast('Note added successfully', 'success');
-    } catch (error) {
-      console.error('Error adding note:', error);
-      addToast(error.response?.data?.error || 'Failed to add note', 'error');
-    }
-  };
-
-  const handleEditNote = (note) => {
-    setEditingNoteId(note.id);
-    setEditNoteContent(note.content);
-  };
-
-  const handleSaveEdit = async (noteId) => {
-    if (!editNoteContent.trim()) return;
-
-    try {
-      await api.put(`${API_URL}/characters/${id}/notes/${noteId}`, {
-        content: editNoteContent
-      });
-      setEditingNoteId(null);
-      setEditNoteContent('');
-      fetchNotes();
-      addToast('Note updated successfully', 'success');
-    } catch (error) {
-      console.error('Error updating note:', error);
-      addToast(error.response?.data?.error || 'Failed to update note', 'error');
-    }
-  };
-
-  const handleCancelEdit = () => {
-    setEditingNoteId(null);
-    setEditNoteContent('');
-  };
-
-  const handleDeleteNote = async (noteId) => {
-    if (!confirm('Are you sure you want to delete this note?')) return;
-
-    try {
-      await api.delete(`${API_URL}/characters/${id}/notes/${noteId}`);
-      fetchNotes();
-      addToast('Note deleted successfully', 'success');
-    } catch (error) {
-      console.error('Error deleting note:', error);
-      addToast(error.response?.data?.error || 'Failed to delete note', 'error');
-    }
-  };
-
-  const formatNoteTimestamp = (timestamp) => {
-    const date = new Date(timestamp);
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
   };
 
   const handleLoadCell = async (cellId) => {
@@ -946,33 +856,44 @@ function CharacterSheet() {
           ← Back to Dashboard
         </Link>
 
-        {communicatorPowered ? (
+        <div className="flex gap-2">
+          {/* Notes Button */}
           <Link
-            to={`/communicator/${id}`}
-            className="relative bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"
+            to={`/notes/${id}`}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"
           >
-            📡 Communicator
-            {unreadMessages > 0 && (
-              <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center animate-pulse">
-                {unreadMessages}
-              </span>
-            )}
+            📝 Notes
           </Link>
-        ) : (
-          <div className="relative group">
-            <button
-              disabled
-              className="bg-gray-600 text-gray-400 px-4 py-2 rounded-lg font-bold flex items-center gap-2 cursor-not-allowed opacity-60"
+
+          {/* Communicator Button */}
+          {communicatorPowered ? (
+            <Link
+              to={`/communicator/${id}`}
+              className="relative bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2"
             >
-              📡 Communicator ⚠️
-            </button>
-            <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block bg-gray-800 text-white text-xs rounded-lg py-2 px-3 whitespace-nowrap z-10 border border-red-500">
-              <div className="font-bold text-red-400 mb-1">⚠️ OFFLINE</div>
-              <div>Requires: Communicator + Energy Cell</div>
-              <div className="absolute top-full right-4 w-0 h-0 border-l-4 border-l-transparent border-r-4 border-r-transparent border-t-4 border-t-red-500"></div>
+              📡 Communicator
+              {unreadMessages > 0 && (
+                <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center animate-pulse">
+                  {unreadMessages}
+                </span>
+              )}
+            </Link>
+          ) : (
+            <div className="relative group">
+              <button
+                disabled
+                className="bg-gray-600 text-gray-400 px-4 py-2 rounded-lg font-bold flex items-center gap-2 cursor-not-allowed opacity-60"
+              >
+                📡 Communicator ⚠️
+              </button>
+              <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block bg-gray-800 text-white text-xs rounded-lg py-2 px-3 whitespace-nowrap z-10 border border-red-500">
+                <div className="font-bold text-red-400 mb-1">⚠️ OFFLINE</div>
+                <div>Requires: Communicator + Energy Cell</div>
+                <div className="absolute top-full right-4 w-0 h-0 border-l-4 border-l-transparent border-r-4 border-r-transparent border-t-4 border-t-red-500"></div>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Character Header - Enhanced with HP, AC, and Ability Scores */}
@@ -1992,95 +1913,6 @@ function CharacterSheet() {
             </div>
           )}
 
-          {/* Notes Journal */}
-          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-            <h2 className="text-xl font-bold text-white mb-4">Private Notes</h2>
-            <p className="text-sm text-gray-400 mb-4">
-              Keep track of your thoughts, clues, and important information. Only you can see these notes.
-            </p>
-
-            {/* Add Note Section */}
-            <div className="mb-6">
-              <textarea
-                value={newNoteContent}
-                onChange={(e) => setNewNoteContent(e.target.value)}
-                placeholder="Write a new note..."
-                className="w-full bg-gray-700 text-white rounded-lg p-3 border border-gray-600 focus:outline-none focus:border-blue-500 resize-none"
-                rows="3"
-              />
-              <button
-                onClick={handleAddNote}
-                disabled={!newNoteContent.trim()}
-                className="mt-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-colors"
-              >
-                Add Note
-              </button>
-            </div>
-
-            {/* Notes List */}
-            <div className="space-y-4">
-              {notes.length === 0 ? (
-                <p className="text-gray-400 text-center py-4">No notes yet. Start writing!</p>
-              ) : (
-                notes.map((note) => (
-                  <div key={note.id} className="bg-gray-700 rounded-lg p-4 border border-gray-600">
-                    {editingNoteId === note.id ? (
-                      // Edit Mode
-                      <div>
-                        <textarea
-                          value={editNoteContent}
-                          onChange={(e) => setEditNoteContent(e.target.value)}
-                          className="w-full bg-gray-800 text-white rounded-lg p-3 border border-gray-600 focus:outline-none focus:border-blue-500 resize-none mb-3"
-                          rows="3"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleSaveEdit(note.id)}
-                            className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm"
-                          >
-                            Save
-                          </button>
-                          <button
-                            onClick={handleCancelEdit}
-                            className="bg-gray-600 hover:bg-gray-500 text-white px-3 py-1 rounded text-sm"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      // View Mode
-                      <div>
-                        <p className="text-gray-200 whitespace-pre-wrap mb-3">{note.content}</p>
-                        <div className="flex justify-between items-center">
-                          <div className="text-xs text-gray-400">
-                            <div>Created: {formatNoteTimestamp(note.created_at)}</div>
-                            {note.updated_at !== note.created_at && (
-                              <div>Updated: {formatNoteTimestamp(note.updated_at)}</div>
-                            )}
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleEditNote(note)}
-                              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleDeleteNote(note.id)}
-                              className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
         </div>
       </div>
 

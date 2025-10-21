@@ -13,6 +13,7 @@ import ShipCatalog from './components/ShipCatalog';
 import GearCatalog from './components/GearCatalog';
 import CommsCenter from './components/CommsCenter';
 import Communicator from './components/Communicator';
+import CharacterNotes from './components/CharacterNotes';
 import BugReportModal from './components/BugReportModal';
 import BugReportsPanel from './components/BugReportsPanel';
 import RegistrationCodesPanel from './components/RegistrationCodesPanel';
@@ -423,6 +424,13 @@ function App() {
             path="/communicator/:characterId"
             element={
               user ? <Communicator user={user} /> : <Navigate to="/login" />
+            }
+          />
+
+          <Route
+            path="/notes/:characterId"
+            element={
+              user ? <CharacterNotes user={user} /> : <Navigate to="/login" />
             }
           />
 

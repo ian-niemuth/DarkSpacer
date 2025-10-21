@@ -500,10 +500,11 @@ router.post('/:id/transfer-credits', async (req, res) => {
 
 // ==================== CHARACTER NOTES ROUTES ====================
 
-// GET - Get all notes for a character (private to character owner only)
+// GET - Get all notes for a character with search/filter support
 router.get('/:characterId/notes', async (req, res) => {
   try {
     const { characterId } = req.params;
+    const { search, tags, archived, sort, pinned } = req.query;
 
     // Verify user owns this character (notes are private, not visible to admin)
     const charCheck = await pool.query(
@@ -515,15 +516,57 @@ router.get('/:characterId/notes', async (req, res) => {
       return res.status(404).json({ error: 'Character not found' });
     }
 
-    // Get all notes for this character, newest first
-    const result = await pool.query(
-      `SELECT id, character_id, content, created_at, updated_at
-       FROM character_notes
-       WHERE character_id = $1
-       ORDER BY created_at DESC`,
-      [characterId]
-    );
+    // Build dynamic query
+    let query = `
+      SELECT id, character_id, title, content, tags, pinned, archived, created_at, updated_at
+      FROM character_notes
+      WHERE character_id = $1
+    `;
+    const params = [characterId];
+    let paramCount = 2;
 
+    // Filter by archived status (default: show only non-archived)
+    if (archived === 'true') {
+      query += ` AND archived = TRUE`;
+    } else if (archived === 'all') {
+      // Show all notes
+    } else {
+      query += ` AND archived = FALSE`;
+    }
+
+    // Filter by pinned status
+    if (pinned === 'true') {
+      query += ` AND pinned = TRUE`;
+    }
+
+    // Search filter (full-text search)
+    if (search && search.trim()) {
+      query += ` AND content_tsv @@ plainto_tsquery('english', $${paramCount})`;
+      params.push(search.trim());
+      paramCount++;
+    }
+
+    // Tags filter
+    if (tags) {
+      const tagArray = tags.split(',').map(t => t.trim()).filter(Boolean);
+      if (tagArray.length > 0) {
+        query += ` AND tags && $${paramCount}::text[]`;
+        params.push(tagArray);
+        paramCount++;
+      }
+    }
+
+    // Sorting
+    const sortOptions = {
+      'newest': 'created_at DESC',
+      'oldest': 'created_at ASC',
+      'updated': 'updated_at DESC',
+      'az': 'content ASC'
+    };
+    const orderBy = sortOptions[sort] || 'pinned DESC, created_at DESC';
+    query += ` ORDER BY ${orderBy}`;
+
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching notes:', error);
@@ -535,7 +578,7 @@ router.get('/:characterId/notes', async (req, res) => {
 router.post('/:characterId/notes', async (req, res) => {
   try {
     const { characterId } = req.params;
-    const { content } = req.body;
+    const { title, content, tags, pinned } = req.body;
 
     if (!content || content.trim() === '') {
       return res.status(400).json({ error: 'Note content is required' });
@@ -553,10 +596,10 @@ router.post('/:characterId/notes', async (req, res) => {
 
     // Create the note
     const result = await pool.query(
-      `INSERT INTO character_notes (character_id, content)
-       VALUES ($1, $2)
-       RETURNING id, character_id, content, created_at, updated_at`,
-      [characterId, content.trim()]
+      `INSERT INTO character_notes (character_id, title, content, tags, pinned)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, character_id, title, content, tags, pinned, archived, created_at, updated_at`,
+      [characterId, title?.trim() || null, content.trim(), tags || [], pinned || false]
     );
 
     // Emit socket event for real-time updates
@@ -582,7 +625,7 @@ router.post('/:characterId/notes', async (req, res) => {
 router.put('/:characterId/notes/:noteId', async (req, res) => {
   try {
     const { characterId, noteId } = req.params;
-    const { content } = req.body;
+    const { title, content, tags, pinned, archived } = req.body;
 
     if (!content || content.trim() === '') {
       return res.status(400).json({ error: 'Note content is required' });
@@ -598,13 +641,44 @@ router.put('/:characterId/notes/:noteId', async (req, res) => {
       return res.status(404).json({ error: 'Character not found' });
     }
 
+    // Build update query dynamically
+    const updates = ['content = $1', 'updated_at = CURRENT_TIMESTAMP'];
+    const params = [content.trim()];
+    let paramCount = 2;
+
+    if (title !== undefined) {
+      updates.push(`title = $${paramCount}`);
+      params.push(title?.trim() || null);
+      paramCount++;
+    }
+
+    if (tags !== undefined) {
+      updates.push(`tags = $${paramCount}`);
+      params.push(tags);
+      paramCount++;
+    }
+
+    if (pinned !== undefined) {
+      updates.push(`pinned = $${paramCount}`);
+      params.push(pinned);
+      paramCount++;
+    }
+
+    if (archived !== undefined) {
+      updates.push(`archived = $${paramCount}`);
+      params.push(archived);
+      paramCount++;
+    }
+
+    params.push(noteId, characterId);
+
     // Update the note
     const result = await pool.query(
       `UPDATE character_notes
-       SET content = $1, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2 AND character_id = $3
-       RETURNING id, character_id, content, created_at, updated_at`,
-      [content.trim(), noteId, characterId]
+       SET ${updates.join(', ')}
+       WHERE id = $${paramCount} AND character_id = $${paramCount + 1}
+       RETURNING id, character_id, title, content, tags, pinned, archived, created_at, updated_at`,
+      params
     );
 
     if (result.rows.length === 0) {
@@ -668,6 +742,131 @@ router.delete('/:characterId/notes/:noteId', async (req, res) => {
   } catch (error) {
     console.error('Error deleting note:', error);
     res.status(500).json({ error: 'Failed to delete note' });
+  }
+});
+
+// PATCH - Bulk operations on notes
+router.patch('/:characterId/notes/bulk', async (req, res) => {
+  try {
+    const { characterId } = req.params;
+    const { noteIds, operation, data } = req.body;
+
+    if (!noteIds || !Array.isArray(noteIds) || noteIds.length === 0) {
+      return res.status(400).json({ error: 'Note IDs array is required' });
+    }
+
+    if (!operation) {
+      return res.status(400).json({ error: 'Operation is required' });
+    }
+
+    // Verify user owns this character
+    const charCheck = await pool.query(
+      'SELECT id FROM characters WHERE id = $1 AND user_id = $2',
+      [characterId, req.user.userId]
+    );
+
+    if (charCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    let result;
+
+    switch (operation) {
+      case 'delete':
+        result = await pool.query(
+          'DELETE FROM character_notes WHERE id = ANY($1::int[]) AND character_id = $2',
+          [noteIds, characterId]
+        );
+        break;
+
+      case 'archive':
+        result = await pool.query(
+          'UPDATE character_notes SET archived = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = ANY($1::int[]) AND character_id = $2',
+          [noteIds, characterId]
+        );
+        break;
+
+      case 'unarchive':
+        result = await pool.query(
+          'UPDATE character_notes SET archived = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = ANY($1::int[]) AND character_id = $2',
+          [noteIds, characterId]
+        );
+        break;
+
+      case 'addTags':
+        if (!data || !data.tags || !Array.isArray(data.tags)) {
+          return res.status(400).json({ error: 'Tags array required for addTags operation' });
+        }
+        result = await pool.query(
+          'UPDATE character_notes SET tags = array_cat(COALESCE(tags, ARRAY[]::text[]), $1::text[]), updated_at = CURRENT_TIMESTAMP WHERE id = ANY($2::int[]) AND character_id = $3',
+          [data.tags, noteIds, characterId]
+        );
+        break;
+
+      default:
+        return res.status(400).json({ error: 'Invalid operation' });
+    }
+
+    // Emit socket event for real-time updates
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`character_${characterId}`).emit('notes_updated', {
+        action: 'bulk_update',
+        operation
+      });
+    }
+
+    res.json({
+      message: `Bulk ${operation} completed successfully`,
+      affected: result.rowCount
+    });
+  } catch (error) {
+    console.error('Error in bulk operation:', error);
+    res.status(500).json({ error: 'Bulk operation failed' });
+  }
+});
+
+// GET - Get notes stats
+router.get('/:characterId/notes/stats', async (req, res) => {
+  try {
+    const { characterId } = req.params;
+
+    // Verify user owns this character
+    const charCheck = await pool.query(
+      'SELECT id FROM characters WHERE id = $1 AND user_id = $2',
+      [characterId, req.user.userId]
+    );
+
+    if (charCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    const result = await pool.query(
+      `SELECT
+         COUNT(*) as total_notes,
+         COUNT(*) FILTER (WHERE archived = FALSE) as active_notes,
+         COUNT(*) FILTER (WHERE archived = TRUE) as archived_notes,
+         COUNT(*) FILTER (WHERE pinned = TRUE) as pinned_notes,
+         SUM(LENGTH(content)) as total_characters,
+         array_agg(DISTINCT tag) FILTER (WHERE tag IS NOT NULL) as all_tags
+       FROM character_notes
+       LEFT JOIN LATERAL unnest(tags) as tag ON true
+       WHERE character_id = $1`,
+      [characterId]
+    );
+
+    const stats = result.rows[0];
+    res.json({
+      totalNotes: parseInt(stats.total_notes) || 0,
+      activeNotes: parseInt(stats.active_notes) || 0,
+      archivedNotes: parseInt(stats.archived_notes) || 0,
+      pinnedNotes: parseInt(stats.pinned_notes) || 0,
+      totalCharacters: parseInt(stats.total_characters) || 0,
+      allTags: stats.all_tags || []
+    });
+  } catch (error) {
+    console.error('Error fetching notes stats:', error);
+    res.status(500).json({ error: 'Failed to fetch notes stats' });
   }
 });
 
