@@ -20,9 +20,22 @@ function AdminPanel() {
   const [quickActionAmount, setQuickActionAmount] = useState('');
   const [quickActionNote, setQuickActionNote] = useState('');
   const [socket, setSocket] = useState(null);
+  const [hudKey, setHudKey] = useState('darkspace-hud-2024'); // Default fallback
 
   useEffect(() => {
     fetchAllCharacters();
+
+    // Fetch HUD access key
+    const fetchHudKey = async () => {
+      try {
+        const response = await api.get(`${API_URL}/public/hud-key`);
+        setHudKey(response.data.key);
+      } catch (error) {
+        console.error('Error fetching HUD key:', error);
+        // Keep using default fallback
+      }
+    };
+    fetchHudKey();
 
     // Connect to socket.io for real-time updates
     const token = localStorage.getItem('token');
@@ -294,6 +307,14 @@ function AdminPanel() {
             className="px-6 py-3 font-bold transition text-gray-400 hover:text-white hover:bg-gray-700"
           >
             🗺️ Galaxy Map
+          </Link>
+          <Link
+            to={`/admin/character-hud?key=${hudKey}`}
+            target="_blank"
+            className="px-6 py-3 font-bold transition bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700"
+            title="Open Streaming HUD (1360x880px) - Perfect for OBS Browser Source"
+          >
+            📺 Streaming HUD
           </Link>
         </div>
       </div>

@@ -57,6 +57,7 @@ const salvageRoutes = require('./routes/salvage');
 const bugReportsRoutes = require('./routes/bugReports');
 const registrationCodesRoutes = require('./routes/registrationCodes');
 const starMapRoutes = require('./routes/star-map');
+const publicRoutes = require('./routes/public');
 // const spaceRoutes = require('./routes/space'); // DEPRECATED - Will be refactored later
 
 const app = express();
@@ -116,6 +117,7 @@ app.use('/api/salvage', salvageRoutes);
 app.use('/api/bug-reports', bugReportsRoutes);
 app.use('/api/registration-codes', registrationCodesRoutes);
 app.use('/api/star-map', starMapRoutes);
+app.use('/api/public', publicRoutes);
 // app.use('/api/space', spaceRoutes); // DEPRECATED - Will be refactored later
 
 app.get('/api/health', (req, res) => {

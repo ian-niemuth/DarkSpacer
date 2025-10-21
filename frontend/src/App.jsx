@@ -19,6 +19,7 @@ import BugReportsPanel from './components/BugReportsPanel';
 import RegistrationCodesPanel from './components/RegistrationCodesPanel';
 import StarMap from './components/StarMap';
 import GalaxyMapDM from './components/admin/GalaxyMapDM';
+import CharacterHUD from './components/CharacterHUD';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -472,6 +473,11 @@ function App() {
                 <Navigate to="/" />
               )
             }
+          />
+
+          <Route
+            path="/admin/character-hud"
+            element={<CharacterHUD user={user} />}
           />
         </Routes>
 
