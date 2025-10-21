@@ -4,9 +4,9 @@ const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 const { addSpacersKit, rollCitizenStartingGear } = require('../utils/starterKit');
-const { 
-  calculateArchetypeHPBonus, 
-  calculateArchetypeACBonus 
+const {
+  calculateArchetypeStartingHPBonus,
+  calculateArchetypeACBonus
 } = require('../utils/archetypeAbilities');
 
 // Function to calculate initial AC for a new character
@@ -33,7 +33,7 @@ function calculateInitialHP(hpRoll, constitution, archetype, level = 1) {
   let totalHP = Math.max(1, hpRoll + Math.max(0, conMod));
   
   // Add archetype HP bonus (e.g., Tough +2)
-  const archetypeBonus = calculateArchetypeHPBonus(archetype, level);
+  const archetypeBonus = calculateArchetypeStartingHPBonus(archetype);
   totalHP += archetypeBonus;
   
   return totalHP;

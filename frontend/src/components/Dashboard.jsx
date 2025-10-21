@@ -542,19 +542,19 @@ function CreateCharacterModal({ onClose, onCreated }) {
   };
 
   // Calculate starting HP
-  const calculateStartingHP = () => {
+  const calculateStartingHP = (constitution) => {
     const archetypeData = ARCHETYPE_DATA[formData.archetype];
     const maxDie = archetypeData.hp; // Always use max die value at creation
-    const conMod = getModifier(formData.constitution);
-    
+    const conMod = getModifier(constitution);
+
     // BUG FIX #2: Base HP = max die + CON modifier (only if positive)
     // Never go below 1 HP total
     let totalHP = Math.max(1, maxDie + Math.max(0, conMod));
-    
+
     // Add archetype bonus (e.g., Tough +2)
     const archetypeBonus = calculateArchetypeHPBonus(formData.archetype, 1);
     totalHP += archetypeBonus;
-    
+
     return totalHP;
   };
 
@@ -718,7 +718,7 @@ function CreateCharacterModal({ onClose, onCreated }) {
     try {
       const token = localStorage.getItem('token');
       const statsWithBonuses = applyTalentBonuses();
-      const startingHP = calculateStartingHP();
+      const startingHP = calculateStartingHP(statsWithBonuses.constitution);
       const startingCredits = rollStartingCredits();
       const startingAC = calculateStartingAC();
       
@@ -755,7 +755,7 @@ function CreateCharacterModal({ onClose, onCreated }) {
         background: formData.background,
         motivation: formData.motivation,
         hp_current: startingHP,
-        hp_max: startingHP,
+        hp_max: ARCHETYPE_DATA[formData.archetype].hp, // Send raw die value, backend will calculate bonuses
         ac: startingAC,
         credits: startingCredits,
         level: 1,
@@ -1048,7 +1048,7 @@ function CreateCharacterModal({ onClose, onCreated }) {
                   <h3 className="text-white font-bold mb-2">Starting Values</h3>
                   <div className="grid grid-cols-2 gap-2 text-sm text-gray-300">
                     <div>
-                      HP: {calculateStartingHP()}
+                      HP: {calculateStartingHP(formData.constitution)}
                       {calculateArchetypeHPBonus(formData.archetype, 1) > 0 && (
                         <span className="text-xs text-green-400 ml-1">
                           (+{calculateArchetypeHPBonus(formData.archetype, 1)} from {formData.archetype})
