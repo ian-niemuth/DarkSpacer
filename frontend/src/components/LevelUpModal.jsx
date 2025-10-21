@@ -13,6 +13,10 @@ function LevelUpModal({ character, onClose, onLevelUp }) {
   const [customInput, setCustomInput] = useState(''); // For text inputs like expertise
   const [triadPower, setTriadPower] = useState('');
 
+  // Ultimate Choice (Roll 12) talent selection
+  const [selectedUltimateTalent, setSelectedUltimateTalent] = useState(null); // Full talent object
+  const [ultimateTalentChoice, setUltimateTalentChoice] = useState(''); // Sub-choice for the selected talent
+
   const handleInitialLevelUp = async () => {
     setLoading(true);
     setError('');
@@ -95,7 +99,16 @@ function LevelUpModal({ character, onClose, onLevelUp }) {
 
     // Ultimate Choice - must select something
     if (talent.name === 'Ultimate Choice') {
-      return !!talentChoice;
+      if (!talentChoice) return false;
+      // If they chose a talent, must select which talent and any sub-choices
+      if (talentChoice.includes('Talent')) {
+        if (!selectedUltimateTalent) return false;
+        // If selected talent has choices, must make sub-choice
+        if (selectedUltimateTalent.choice && selectedUltimateTalent.options && !ultimateTalentChoice) {
+          return false;
+        }
+      }
+      return true;
     }
 
     // Default - if choice is true, require talentChoice
@@ -123,14 +136,28 @@ function LevelUpModal({ character, onClose, onLevelUp }) {
 
     try {
       const token = localStorage.getItem('token');
-      
+
       // Build the complete talent data
-      const completeTalent = {
-        ...talent,
-        choice: talentChoice || null,
-        customInput: customInput || null,
-        triadPower: triadPower || null
-      };
+      let completeTalent;
+
+      // Special handling for Ultimate Choice + Talent selection
+      if (talent.name === 'Ultimate Choice' && talentChoice.includes('Talent') && selectedUltimateTalent) {
+        // Use the selected talent's data instead of Ultimate Choice
+        completeTalent = {
+          ...selectedUltimateTalent,
+          roll: talent.roll, // Keep original roll (12)
+          choice: ultimateTalentChoice || null,
+          fromUltimateChoice: true // Mark that this came from Ultimate Choice
+        };
+      } else {
+        // Normal talent or Ultimate Choice + Stats
+        completeTalent = {
+          ...talent,
+          choice: talentChoice || null,
+          customInput: customInput || null,
+          triadPower: triadPower || null
+        };
+      }
 
       await axios.post(
         `${API_URL}/advancement/complete-level-up/${character.id}`,
@@ -416,28 +443,76 @@ function LevelUpModal({ character, onClose, onLevelUp }) {
                       </div>
                     )}
 
-                    {/* Ultimate Choice - Complex */}
+                    {/* Ultimate Choice - Enhanced */}
                     {talent.name === 'Ultimate Choice' && (
-                      <div>
-                        <label className="block text-sm font-medium text-purple-300 mb-2">
-                          Make your choice: *
-                        </label>
-                        <select
-                          className="w-full px-3 py-2 bg-gray-800 border border-purple-600 rounded text-white focus:ring-2 focus:ring-purple-500"
-                          value={talentChoice}
-                          onChange={(e) => setTalentChoice(e.target.value)}
-                          required
-                        >
-                          <option value="">-- Select --</option>
-                          {talent.options.map((option) => (
-                            <option key={option} value={option}>{option}</option>
-                          ))}
-                        </select>
-                        {talentChoice && talentChoice.includes('Talent') && (
-                          <div className="mt-2 p-2 bg-yellow-900 bg-opacity-20 rounded text-xs text-gray-300">
-                            Note: Work with your DM to select an appropriate talent from your archetype's list
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-sm font-medium text-purple-300 mb-2">
+                            Make your choice: *
+                          </label>
+                          <select
+                            className="w-full px-3 py-2 bg-gray-800 border border-purple-600 rounded text-white focus:ring-2 focus:ring-purple-500"
+                            value={talentChoice}
+                            onChange={(e) => {
+                              setTalentChoice(e.target.value);
+                              // Reset talent selection when changing primary choice
+                              setSelectedUltimateTalent(null);
+                              setUltimateTalentChoice('');
+                            }}
+                            required
+                          >
+                            <option value="">-- Select --</option>
+                            {talent.options.map((option) => (
+                              <option key={option} value={option}>{option}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Talent Selection */}
+                        {talentChoice && talentChoice.includes('Talent') && levelUpResult.availableTalents && (
+                          <div>
+                            <label className="block text-sm font-medium text-purple-300 mb-2">
+                              Which talent? *
+                            </label>
+                            <select
+                              className="w-full px-3 py-2 bg-gray-700 border border-purple-500 rounded text-white focus:ring-2 focus:ring-purple-400"
+                              value={selectedUltimateTalent?.name || ''}
+                              onChange={(e) => {
+                                const talent = levelUpResult.availableTalents.find(t => t.name === e.target.value);
+                                setSelectedUltimateTalent(talent);
+                                setUltimateTalentChoice('');
+                              }}
+                              required
+                            >
+                              <option value="">-- Select Talent --</option>
+                              {levelUpResult.availableTalents.map((t) => (
+                                <option key={t.name + t.roll} value={t.name}>{t.name}</option>
+                              ))}
+                            </select>
                           </div>
                         )}
+
+                        {/* Sub-choice for selected talent */}
+                        {selectedUltimateTalent?.choice && selectedUltimateTalent?.options && (
+                          <div>
+                            <label className="block text-sm font-medium text-purple-300 mb-2">
+                              {selectedUltimateTalent.name} choice: *
+                            </label>
+                            <select
+                              className="w-full px-3 py-2 bg-gray-600 border border-purple-400 rounded text-white focus:ring-2 focus:ring-purple-300"
+                              value={ultimateTalentChoice}
+                              onChange={(e) => setUltimateTalentChoice(e.target.value)}
+                              required
+                            >
+                              <option value="">-- Select --</option>
+                              {selectedUltimateTalent.options.map((option) => (
+                                <option key={option} value={option}>{option}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        {/* +2 Stats message */}
                         {talentChoice && talentChoice.includes('stat') && (
                           <div className="mt-2 p-2 bg-yellow-900 bg-opacity-20 rounded text-xs text-gray-300">
                             Note: Work with your DM to distribute +2 points to your stats

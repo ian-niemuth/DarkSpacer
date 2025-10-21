@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const { authenticateToken, isAdmin } = require('../middleware/auth');
-const { rollHitPoints, getRandomTalent } = require('../config/talentTables');
+const { rollHitPoints, getRandomTalent, TALENT_TABLES } = require('../config/talentTables');
 const { calculateArchetypeACBonus } = require('../utils/archetypeAbilities');
 
 router.use(authenticateToken);
@@ -178,9 +178,21 @@ router.post('/level-up/:characterId', async (req, res) => {
     
     // 2. Roll talent if applicable
     let newTalent = null;
-    
+    let availableTalents = null;
+
     if (grantsTalent(newLevel)) {
       newTalent = getRandomTalent(character.archetype);
+
+      // If Ultimate Choice (roll 12), provide list of available talents
+      if (newTalent && newTalent.roll === 12) {
+        const archetypeTalents = TALENT_TABLES[character.archetype];
+        availableTalents = Object.entries(archetypeTalents)
+          .filter(([roll]) => parseInt(roll) !== 12) // Exclude Ultimate Choice itself
+          .map(([roll, talent]) => ({
+            ...talent,
+            roll: parseInt(roll)
+          }));
+      }
     }
     
     // 3. Recalculate AC if Wise archetype (Insightful Defense)
@@ -227,6 +239,8 @@ router.post('/level-up/:characterId', async (req, res) => {
         newMaxHP: newMaxHP,
         newAC: newAC,
         talent: newTalent,
+        availableTalents: availableTalents, // Included when Ultimate Choice is rolled
+        archetype: character.archetype, // Needed for frontend display
         xpReset: true
       }
     });

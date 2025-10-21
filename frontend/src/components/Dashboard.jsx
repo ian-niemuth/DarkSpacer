@@ -343,6 +343,8 @@ function CreateCharacterModal({ onClose, onCreated }) {
   const [talents, setTalents] = useState([]);
   const [talentChoices, setTalentChoices] = useState({});
   const [nestedChoices, setNestedChoices] = useState({}); // For "choose talent or stats" options
+  const [selectedNestedTalents, setSelectedNestedTalents] = useState({}); // For storing Roll 12 chosen talents
+  const [selectedNestedTalentChoices, setSelectedNestedTalentChoices] = useState({}); // For sub-choices of Roll 12 talents
   const [error, setError] = useState('');
   const [selectedArchetypeDetails, setSelectedArchetypeDetails] = useState(null);
   const [statRollsRemaining, setStatRollsRemaining] = useState(5);
@@ -479,8 +481,7 @@ function CreateCharacterModal({ onClose, onCreated }) {
   const getAvailableTalents = (archetype) => {
     const archetypeData = ARCHETYPE_DATA[archetype];
     return archetypeData.talentTable
-      .filter(t => t.roll !== 12) // Exclude the "choose talent or stats" option itself
-      .map(t => t.result);
+      .filter(t => t.roll !== 12); // Exclude the "choose talent or stats" option itself - return full objects
   };
 
   // 🔧 FIXED: Get available Triad powers excluding starting power and powers from OTHER talents (not current)
@@ -583,7 +584,7 @@ function CreateCharacterModal({ onClose, onCreated }) {
       // Handle nested choices (choose talent or +2 stats)
       if (needsNestedChoice(talent) && nestedChoices[index]) {
         const primaryChoice = nestedChoices[index].primaryChoice;
-        
+
         if (primaryChoice && primaryChoice.includes('+2')) {
           // They chose stats - apply the bonus
           const statChoice = nestedChoices[index].statChoice;
@@ -598,8 +599,27 @@ function CreateCharacterModal({ onClose, onCreated }) {
                 'wis': 'wisdom',
                 'cha': 'charisma'
               }[stat];
-              
+
               statsWithBonuses[fullStatName] += 2;
+            }
+          }
+        } else if (primaryChoice && primaryChoice.includes('talent')) {
+          // They chose a talent - apply that talent's bonuses
+          const selectedTalent = selectedNestedTalents[index];
+          if (selectedTalent && selectedTalent.statBonus && selectedNestedTalentChoices[index]) {
+            const choice = selectedNestedTalentChoices[index];
+            const stat = choice.toLowerCase();
+            if (['str', 'dex', 'con', 'int', 'wis', 'cha'].includes(stat)) {
+              const fullStatName = {
+                'str': 'strength',
+                'dex': 'dexterity',
+                'con': 'constitution',
+                'int': 'intelligence',
+                'wis': 'wisdom',
+                'cha': 'charisma'
+              }[stat];
+
+              statsWithBonuses[fullStatName] += selectedTalent.statBonus;
             }
           }
         }
@@ -727,21 +747,44 @@ function CreateCharacterModal({ onClose, onCreated }) {
       
       // Build talents array for storage
       const talentsForStorage = talents.map((talent, index) => {
-        const baseTalent = {
-          name: talent.result,
-          description: talent.description,
-          roll: talent.rollResult,
-          usesPerDay: talent.usesPerDay || 0,
-          acBonus: talent.acBonus || 0,
-          statBonus: talent.statBonus || 0
-        };
+        // Check if this is a Roll 12 where they chose another talent
+        const isRoll12TalentChoice = needsNestedChoice(talent) &&
+                                      nestedChoices[index]?.primaryChoice?.includes('talent') &&
+                                      selectedNestedTalents[index];
 
-        // Handle nested choices
-        if (needsNestedChoice(talent) && nestedChoices[index]) {
-          baseTalent.choice = nestedChoices[index].primaryChoice;
-          baseTalent.nestedChoice = nestedChoices[index].talentChoice || nestedChoices[index].statChoice;
+        let baseTalent;
+
+        if (isRoll12TalentChoice) {
+          // Use the selected talent's complete data
+          const selectedTalent = selectedNestedTalents[index];
+          baseTalent = {
+            name: selectedTalent.result,
+            description: selectedTalent.description,
+            roll: talent.rollResult, // Keep original roll (12)
+            usesPerDay: selectedTalent.usesPerDay || 0,
+            acBonus: selectedTalent.acBonus || 0,
+            statBonus: selectedTalent.statBonus || 0,
+            choice: selectedNestedTalentChoices[index] || null,
+            fromRoll12: true // Mark that this came from a Roll 12 selection
+          };
         } else {
-          baseTalent.choice = talentChoices[index] || null;
+          // Normal talent or Roll 12 +2 stats
+          baseTalent = {
+            name: talent.result,
+            description: talent.description,
+            roll: talent.rollResult,
+            usesPerDay: talent.usesPerDay || 0,
+            acBonus: talent.acBonus || 0,
+            statBonus: talent.statBonus || 0
+          };
+
+          // Handle nested choices (Roll 12 +2 stats)
+          if (needsNestedChoice(talent) && nestedChoices[index]) {
+            baseTalent.choice = nestedChoices[index].primaryChoice;
+            baseTalent.nestedChoice = nestedChoices[index].talentChoice || nestedChoices[index].statChoice;
+          } else {
+            baseTalent.choice = talentChoices[index] || null;
+          }
         }
 
         return baseTalent;
@@ -1159,21 +1202,57 @@ function CreateCharacterModal({ onClose, onCreated }) {
                             </div>
 
                             {nestedChoices[index]?.primaryChoice?.includes('talent') && (
-                              <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-1">
-                                  Which talent? *
-                                </label>
-                                <select
-                                  className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white"
-                                  value={nestedChoices[index]?.talentChoice || ''}
-                                  onChange={(e) => handleNestedChoice(index, 'talentChoice', e.target.value)}
-                                  required
-                                >
-                                  <option value="">-- Select Talent --</option>
-                                  {getAvailableTalents(formData.archetype).map((talentName) => (
-                                    <option key={talentName} value={talentName}>{talentName}</option>
-                                  ))}
-                                </select>
+                              <div className="space-y-3">
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                                    Which talent? *
+                                  </label>
+                                  <select
+                                    className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white"
+                                    value={nestedChoices[index]?.talentChoice || ''}
+                                    onChange={(e) => {
+                                      const talentName = e.target.value;
+                                      handleNestedChoice(index, 'talentChoice', talentName);
+                                      // Store the full talent object
+                                      const selectedTalent = getAvailableTalents(formData.archetype).find(t => t.result === talentName);
+                                      if (selectedTalent) {
+                                        setSelectedNestedTalents({
+                                          ...selectedNestedTalents,
+                                          [index]: selectedTalent
+                                        });
+                                      }
+                                    }}
+                                    required
+                                  >
+                                    <option value="">-- Select Talent --</option>
+                                    {getAvailableTalents(formData.archetype).map((talent) => (
+                                      <option key={talent.result} value={talent.result}>{talent.result}</option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                {/* Show sub-choices for the selected talent */}
+                                {selectedNestedTalents[index]?.choice && selectedNestedTalents[index]?.options && (
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">
+                                      {selectedNestedTalents[index].result} choice: *
+                                    </label>
+                                    <select
+                                      className="w-full px-3 py-2 bg-gray-700 border border-gray-500 rounded text-white"
+                                      value={selectedNestedTalentChoices[index] || ''}
+                                      onChange={(e) => setSelectedNestedTalentChoices({
+                                        ...selectedNestedTalentChoices,
+                                        [index]: e.target.value
+                                      })}
+                                      required
+                                    >
+                                      <option value="">-- Select --</option>
+                                      {selectedNestedTalents[index].options.map((option) => (
+                                        <option key={option} value={option}>{option}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                )}
                               </div>
                             )}
 
