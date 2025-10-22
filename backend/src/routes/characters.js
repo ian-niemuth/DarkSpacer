@@ -1,6 +1,9 @@
 // backend/src/routes/characters.js
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const pool = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 const { addSpacersKit, rollCitizenStartingGear } = require('../utils/starterKit');
@@ -8,6 +11,39 @@ const {
   calculateArchetypeStartingHPBonus,
   calculateArchetypeACBonus
 } = require('../utils/archetypeAbilities');
+
+// Configure multer for avatar uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(__dirname, '../../public/avatars');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'avatar-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  },
+  fileFilter: function (req, file, cb) {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed (jpeg, jpg, png, gif, webp)'));
+    }
+  }
+});
 
 // Function to calculate initial AC for a new character
 function calculateInitialAC(dexterity, archetype, level = 1) {
@@ -867,6 +903,119 @@ router.get('/:characterId/notes/stats', async (req, res) => {
   } catch (error) {
     console.error('Error fetching notes stats:', error);
     res.status(500).json({ error: 'Failed to fetch notes stats' });
+  }
+});
+
+// POST - Upload avatar for character
+router.post('/:id/avatar', upload.single('avatar'), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify user owns this character
+    const charCheck = await pool.query(
+      'SELECT avatar_url FROM characters WHERE id = $1 AND user_id = $2',
+      [id, req.user.userId]
+    );
+
+    if (charCheck.rows.length === 0) {
+      // Delete uploaded file if character not found
+      if (req.file) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // Delete old avatar if it exists
+    const oldAvatar = charCheck.rows[0].avatar_url;
+    if (oldAvatar) {
+      const oldPath = path.join(__dirname, '../../public/avatars', path.basename(oldAvatar));
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+    }
+
+    // Save new avatar URL to database
+    const avatarUrl = `/uploads/${req.file.filename}`;
+    const result = await pool.query(
+      'UPDATE characters SET avatar_url = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+      [avatarUrl, id]
+    );
+
+    // Emit socket event for real-time updates
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`character_${id}`).emit('character_updated', {
+        character: result.rows[0]
+      });
+      io.emit('admin_refresh');
+    }
+
+    res.json({
+      message: 'Avatar uploaded successfully',
+      avatar_url: avatarUrl,
+      character: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error uploading avatar:', error);
+    // Clean up uploaded file on error
+    if (req.file) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ error: 'Failed to upload avatar' });
+  }
+});
+
+// DELETE - Remove avatar from character
+router.delete('/:id/avatar', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify user owns this character
+    const charCheck = await pool.query(
+      'SELECT avatar_url FROM characters WHERE id = $1 AND user_id = $2',
+      [id, req.user.userId]
+    );
+
+    if (charCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    const oldAvatar = charCheck.rows[0].avatar_url;
+
+    // Delete avatar file if it exists
+    if (oldAvatar) {
+      const oldPath = path.join(__dirname, '../../public/avatars', path.basename(oldAvatar));
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+    }
+
+    // Remove avatar URL from database
+    const result = await pool.query(
+      'UPDATE characters SET avatar_url = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
+      [id]
+    );
+
+    // Emit socket event for real-time updates
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`character_${id}`).emit('character_updated', {
+        character: result.rows[0]
+      });
+      io.emit('admin_refresh');
+    }
+
+    res.json({
+      message: 'Avatar removed successfully',
+      character: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error removing avatar:', error);
+    res.status(500).json({ error: 'Failed to remove avatar' });
   }
 });
 

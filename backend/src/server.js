@@ -2,6 +2,7 @@
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
+const path = require('path');
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
@@ -84,6 +85,9 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' })); // Limit payload size
 app.use(apiLimiter); // Apply rate limiting to all routes
 
+// Serve static files from public directory (for avatars)
+app.use('/uploads', express.static(path.join(__dirname, '../public/avatars')));
+
 // Add cache control headers for API responses
 app.use('/api', (req, res, next) => {
   // Prevent caching of API responses
@@ -124,27 +128,39 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'DarkSpace Campaign Manager API' });
 });
 
-// Socket.IO authentication middleware
+// Socket.IO authentication middleware (optional auth)
+// Allows unauthenticated connections to receive broadcast events
+// but protects user-specific events
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
 
-  if (!token) {
-    return next(new Error('Authentication error: No token provided'));
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      socket.user = decoded; // Attach user info to socket
+      socket.authenticated = true;
+    } catch (error) {
+      console.log('Invalid token provided, allowing unauthenticated connection');
+      socket.authenticated = false;
+    }
+  } else {
+    socket.authenticated = false;
   }
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    socket.user = decoded; // Attach user info to socket
-    next();
-  } catch (error) {
-    return next(new Error('Authentication error: Invalid token'));
-  }
+  next(); // Allow connection regardless of authentication
 });
 
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id, 'User:', socket.user.username);
+  const userInfo = socket.authenticated ? socket.user.username : 'Unauthenticated (HUD)';
+  console.log('Client connected:', socket.id, 'User:', userInfo);
 
   socket.on('join_character', async (characterId) => {
+    // Require authentication for user-specific events
+    if (!socket.authenticated) {
+      socket.emit('error', { message: 'Authentication required for this action' });
+      return;
+    }
+
     try {
       // Verify user owns this character or is admin
       const result = await pool.query(
@@ -166,6 +182,12 @@ io.on('connection', (socket) => {
   });
 
   socket.on('join_ship_room', async (shipId) => {
+    // Require authentication for user-specific events
+    if (!socket.authenticated) {
+      socket.emit('error', { message: 'Authentication required for this action' });
+      return;
+    }
+
     try {
       // Verify user has a character that is crew on this ship or is admin
       const result = await pool.query(
@@ -190,6 +212,12 @@ io.on('connection', (socket) => {
   });
 
   socket.on('leave_ship_room', (shipId) => {
+    // Require authentication for user-specific events
+    if (!socket.authenticated) {
+      socket.emit('error', { message: 'Authentication required for this action' });
+      return;
+    }
+
     socket.leave(`ship_${shipId}`);
     console.log(`Socket ${socket.id} (${socket.user.username}) left ship_${shipId}`);
   });
@@ -223,3 +251,4 @@ server.listen(PORT, () => {
 });
 
 module.exports = server;
+

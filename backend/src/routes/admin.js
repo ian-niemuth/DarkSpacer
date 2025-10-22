@@ -925,4 +925,90 @@ router.delete('/characters/:id', async (req, res) => {
   }
 });
 
+// POST slot assignments for a layout (admin)
+router.post('/slot-assignments', async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const { layout_type, assignments } = req.body;
+
+    // Validate layout type
+    if (!layout_type || !['large-top', 'large-bottom', 'small-top', 'small-bottom'].includes(layout_type)) {
+      return res.status(400).json({
+        error: 'Invalid layout_type. Must be "large-top", "large-bottom", "small-top", or "small-bottom"'
+      });
+    }
+
+    // Validate assignments array
+    if (!Array.isArray(assignments)) {
+      return res.status(400).json({
+        error: 'Assignments must be an array'
+      });
+    }
+
+    await client.query('BEGIN');
+
+    // Delete existing assignments for this layout
+    await client.query(
+      'DELETE FROM character_slot_assignments WHERE layout_type = $1',
+      [layout_type]
+    );
+
+    // Insert new assignments
+    for (const assignment of assignments) {
+      const { slot_number, character_id } = assignment;
+
+      // Validate slot_number
+      if (!slot_number || slot_number < 1 || slot_number > 3) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          error: 'slot_number must be between 1 and 3'
+        });
+      }
+
+      // character_id can be null for empty slots, but if provided, validate it exists
+      if (character_id) {
+        const charCheck = await client.query(
+          'SELECT id FROM characters WHERE id = $1',
+          [character_id]
+        );
+
+        if (charCheck.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({
+            error: `Character with id ${character_id} not found`
+          });
+        }
+
+        // Insert the assignment
+        await client.query(`
+          INSERT INTO character_slot_assignments (layout_type, slot_number, character_id)
+          VALUES ($1, $2, $3)
+        `, [layout_type, slot_number, character_id]);
+      }
+      // If character_id is null/empty, we skip inserting (empty slot)
+    }
+
+    await client.query('COMMIT');
+
+    // Emit socket event for real-time HUD updates
+    const io = req.app.get('io');
+    io.emit('slot_assignments_updated', {
+      layout_type,
+      message: `${layout_type} layout slot assignments updated`
+    });
+
+    res.json({
+      message: 'Slot assignments saved successfully',
+      layout_type
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error saving slot assignments:', error);
+    res.status(500).json({ error: 'Failed to save slot assignments' });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;

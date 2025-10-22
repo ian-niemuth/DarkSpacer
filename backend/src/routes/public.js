@@ -80,4 +80,50 @@ router.get('/hud-key', (req, res) => {
   res.json({ key: HUD_ACCESS_KEY });
 });
 
+// GET slot assignments for a specific layout (requires access key)
+router.get('/slot-assignments', async (req, res) => {
+  try {
+    const { key, layout } = req.query;
+
+    // Validate access key
+    if (!key || key !== HUD_ACCESS_KEY) {
+      return res.status(403).json({
+        error: 'Invalid or missing access key'
+      });
+    }
+
+    // Validate layout parameter
+    if (!layout || !['large-top', 'large-bottom', 'small-top', 'small-bottom'].includes(layout)) {
+      return res.status(400).json({
+        error: 'Invalid layout parameter. Must be "large-top", "large-bottom", "small-top", or "small-bottom"'
+      });
+    }
+
+    // Fetch slot assignments for this layout
+    const assignmentsResult = await pool.query(`
+      SELECT
+        csa.slot_number,
+        c.id,
+        c.name,
+        c.level,
+        c.archetype,
+        c.background,
+        c.hp_current,
+        c.hp_max,
+        c.ac,
+        sca.crew_role
+      FROM character_slot_assignments csa
+      JOIN characters c ON csa.character_id = c.id
+      LEFT JOIN ship_crew_assignments sca ON c.id = sca.character_id
+      WHERE csa.layout_type = $1
+      ORDER BY csa.slot_number
+    `, [layout]);
+
+    res.json(assignmentsResult.rows);
+  } catch (error) {
+    console.error('Error fetching slot assignments:', error);
+    res.status(500).json({ error: 'Failed to fetch slot assignments' });
+  }
+});
+
 module.exports = router;

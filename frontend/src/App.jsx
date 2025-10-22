@@ -20,6 +20,7 @@ import RegistrationCodesPanel from './components/RegistrationCodesPanel';
 import StarMap from './components/StarMap';
 import GalaxyMapDM from './components/admin/GalaxyMapDM';
 import CharacterHUD from './components/CharacterHUD';
+import CharacterSlotsHUD from './components/CharacterSlotsHUD';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -478,6 +479,11 @@ function App() {
           <Route
             path="/admin/character-hud"
             element={<CharacterHUD user={user} />}
+          />
+
+          <Route
+            path="/admin/character-slots-hud"
+            element={<CharacterSlotsHUD />}
           />
         </Routes>
 

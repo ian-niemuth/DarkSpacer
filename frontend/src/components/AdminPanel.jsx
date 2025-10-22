@@ -22,6 +22,15 @@ function AdminPanel() {
   const [socket, setSocket] = useState(null);
   const [hudKey, setHudKey] = useState('darkspace-hud-2024'); // Default fallback
 
+  // Slot assignments state
+  const [slotLayout, setSlotLayout] = useState('large-top'); // 'large-top', 'large-bottom', 'small-top', 'small-bottom'
+  const [slotAssignments, setSlotAssignments] = useState({
+    'large-top': {},
+    'large-bottom': {},
+    'small-top': {},
+    'small-bottom': {}
+  });
+
   useEffect(() => {
     fetchAllCharacters();
 
@@ -72,6 +81,53 @@ function AdminPanel() {
       console.error('Error fetching characters:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSlotAssignments = async (layout) => {
+    try {
+      const response = await api.get(`${API_URL}/public/slot-assignments`, {
+        params: { key: hudKey, layout }
+      });
+
+      // Convert array to object mapping slot_number -> character_id
+      const slotsObj = {};
+      response.data.forEach(slot => {
+        slotsObj[slot.slot_number] = slot.id;
+      });
+
+      setSlotAssignments(prev => ({
+        ...prev,
+        [layout]: slotsObj
+      }));
+    } catch (error) {
+      console.error(`Error fetching ${layout} slot assignments:`, error);
+    }
+  };
+
+  const saveSlotAssignments = async (layout) => {
+    try {
+      const slotsObj = slotAssignments[layout];
+
+      // Convert object to array format expected by API
+      const assignments = Object.entries(slotsObj)
+        .filter(([_, characterId]) => characterId) // Only include assigned slots
+        .map(([slotNumber, characterId]) => ({
+          slot_number: parseInt(slotNumber),
+          character_id: characterId
+        }));
+
+      await api.post(`${API_URL}/admin/slot-assignments`, {
+        layout_type: layout,
+        assignments
+      });
+
+      setActionResult(`✅ ${layout} HUD slots saved successfully`);
+      setTimeout(() => setActionResult(''), 3000);
+    } catch (error) {
+      console.error(`Error saving ${layout} slot assignments:`, error);
+      setActionResult(`❌ Failed to save ${layout} slot assignments`);
+      setTimeout(() => setActionResult(''), 5000);
     }
   };
 
@@ -308,6 +364,18 @@ function AdminPanel() {
           >
             🗺️ Galaxy Map
           </Link>
+          <button
+            onClick={() => {
+              setActiveTab('hud-slots');
+              fetchSlotAssignments('large-top');
+              fetchSlotAssignments('large-bottom');
+              fetchSlotAssignments('small-top');
+              fetchSlotAssignments('small-bottom');
+            }}
+            className="ml-auto px-6 py-3 font-bold transition bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700"
+          >
+            📺 HUD Slots
+          </button>
           <Link
             to={`/admin/character-hud?key=${hudKey}`}
             target="_blank"
@@ -338,6 +406,163 @@ function AdminPanel() {
       {/* Salvage Tab */}
       {activeTab === 'salvage' && (
         <SalvageManager />
+      )}
+
+      {/* HUD Slots Tab */}
+      {activeTab === 'hud-slots' && (
+        <div className="space-y-6">
+          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+            <h2 className="text-2xl font-bold text-white mb-2">📺 HUD Slot Management</h2>
+            <p className="text-gray-400 text-sm mb-4">
+              Configure which characters appear in each slot for OBS streaming HUDs
+            </p>
+
+            {/* Layout Selector */}
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <button
+                onClick={() => setSlotLayout('large-top')}
+                className={`px-6 py-3 rounded font-bold transition ${
+                  slotLayout === 'large-top'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-700 text-gray-400 hover:text-white'
+                }`}
+              >
+                📐 Large Top (2200×145px)
+              </button>
+              <button
+                onClick={() => setSlotLayout('large-bottom')}
+                className={`px-6 py-3 rounded font-bold transition ${
+                  slotLayout === 'large-bottom'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-700 text-gray-400 hover:text-white'
+                }`}
+              >
+                📐 Large Bottom (2200×145px)
+              </button>
+              <button
+                onClick={() => setSlotLayout('small-top')}
+                className={`px-6 py-3 rounded font-bold transition ${
+                  slotLayout === 'small-top'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-700 text-gray-400 hover:text-white'
+                }`}
+              >
+                📱 Small Top (1365×110px)
+              </button>
+              <button
+                onClick={() => setSlotLayout('small-bottom')}
+                className={`px-6 py-3 rounded font-bold transition ${
+                  slotLayout === 'small-bottom'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-700 text-gray-400 hover:text-white'
+                }`}
+              >
+                📱 Small Bottom (1365×110px)
+              </button>
+            </div>
+
+            {/* Slot Assignment Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              {[1, 2, 3].map((slotNumber) => {
+                const currentSlots = slotAssignments[slotLayout];
+                const selectedCharacterId = currentSlots[slotNumber];
+
+                return (
+                  <div key={slotNumber} className="bg-gray-700 rounded-lg p-4 border border-gray-600">
+                    <label className="block text-white font-bold mb-2">
+                      Slot {slotNumber}
+                    </label>
+                    <select
+                      value={selectedCharacterId || ''}
+                      onChange={(e) => {
+                        const newSlots = { ...currentSlots };
+                        if (e.target.value) {
+                          newSlots[slotNumber] = parseInt(e.target.value);
+                        } else {
+                          delete newSlots[slotNumber];
+                        }
+
+                        setSlotAssignments(prev => ({
+                          ...prev,
+                          [slotLayout]: newSlots
+                        }));
+                      }}
+                      className="w-full bg-gray-800 text-white border border-gray-600 rounded px-3 py-2 focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="">-- Empty Slot --</option>
+                      {characters.map((char) => (
+                        <option key={char.id} value={char.id}>
+                          {char.name} (Lv{char.level} {char.archetype})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Save Button */}
+            <div className="flex justify-between items-center flex-wrap gap-3">
+              <button
+                onClick={() => saveSlotAssignments(slotLayout)}
+                className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded font-bold transition"
+              >
+                💾 Save {slotLayout.replace('-', ' ').toUpperCase()} Slots
+              </button>
+
+              {/* HUD Links */}
+              <div className="flex gap-2 flex-wrap">
+                <a
+                  href={`/admin/character-slots-hud?key=${hudKey}&layout=large-top`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded font-bold transition text-xs"
+                >
+                  📐 Large Top
+                </a>
+                <a
+                  href={`/admin/character-slots-hud?key=${hudKey}&layout=large-bottom`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded font-bold transition text-xs"
+                >
+                  📐 Large Bottom
+                </a>
+                <a
+                  href={`/admin/character-slots-hud?key=${hudKey}&layout=small-top`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded font-bold transition text-xs"
+                >
+                  📱 Small Top
+                </a>
+                <a
+                  href={`/admin/character-slots-hud?key=${hudKey}&layout=small-bottom`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded font-bold transition text-xs"
+                >
+                  📱 Small Bottom
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Instructions */}
+          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+            <h3 className="text-xl font-bold text-white mb-3">ℹ️ Instructions</h3>
+            <ul className="text-gray-400 space-y-2 text-sm">
+              <li>• <strong>4 Layout Types:</strong> Large Top, Large Bottom, Small Top, Small Bottom</li>
+              <li>• <strong>3 Slots per Layout:</strong> Each layout supports up to 3 character slots</li>
+              <li>• <strong>Top vs Bottom:</strong> Use Top layouts for upper OBS position, Bottom for lower position</li>
+              <li>• <strong>Empty Slots:</strong> Unassigned slots are automatically hidden in the HUD</li>
+              <li>• <strong>Auto-Sizing:</strong> Occupied slots distribute evenly across the HUD width</li>
+              <li>• <strong>Save:</strong> Click "Save" button to update assignments for current layout</li>
+              <li>• <strong>Preview:</strong> Use "Open" buttons to view HUDs in new windows for OBS</li>
+              <li>• <strong>OBS Setup:</strong> Add Browser Source, paste URL, set dimensions (2200×145 or 1365×110)</li>
+            </ul>
+          </div>
+        </div>
       )}
 
       {/* Combat Reference Tab */}

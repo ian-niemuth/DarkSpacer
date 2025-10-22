@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import { API_URL, WS_URL } from '../config/api';
+import { WS_URL } from '../config/api';
 import axios from 'axios';
 
 function CharacterHUD() {
@@ -13,11 +13,12 @@ function CharacterHUD() {
   const [error, setError] = useState(null);
   const [isPaused, setIsPaused] = useState(false);
   const [fadeState, setFadeState] = useState('fade-in');
+  const [avatarLoadErrors, setAvatarLoadErrors] = useState({});
 
   // Fetch all characters (public endpoint with key)
   const fetchCharacters = useCallback(async () => {
     try {
-      const response = await axios.get(`${API_URL}/public/hud-characters`, {
+      const response = await axios.get(`${WS_URL}/api/public/hud-characters`, {
         params: { key: hudKey }
       });
       setCharacters(response.data);
@@ -188,16 +189,29 @@ function CharacterHUD() {
 
             {/* Character Portrait & Name */}
             <div className="bg-white/5 border border-white/20 p-8 flex flex-col items-center justify-center flex-1">
-              {/* Portrait Placeholder */}
-              <div className="w-80 h-80 bg-white/10 border-2 border-white/30 flex items-center justify-center mb-8">
-                <div className="text-white/60 text-9xl">
-                  {character.archetype === 'Charming' && '😎'}
-                  {character.archetype === 'Clever' && '🧠'}
-                  {character.archetype === 'Quick' && '⚡'}
-                  {character.archetype === 'Strong' && '💪'}
-                  {character.archetype === 'Tough' && '🛡️'}
-                  {character.archetype === 'Wise' && '🔮'}
-                </div>
+              {/* Portrait */}
+              <div className="w-80 h-80 bg-white/10 border-2 border-white/30 flex items-center justify-center mb-8 overflow-hidden">
+                {character.avatar_url && !avatarLoadErrors[character.id] ? (
+                  <img
+                    src={`${WS_URL}${character.avatar_url}`}
+                    alt={character.name}
+                    className="w-full h-full object-cover"
+                    onLoad={() => setAvatarLoadErrors(prev => ({ ...prev, [character.id]: false }))}
+                    onError={() => {
+                      console.error('Failed to load avatar for character', character.id, ':', character.avatar_url);
+                      setAvatarLoadErrors(prev => ({ ...prev, [character.id]: true }));
+                    }}
+                  />
+                ) : (
+                  <div className="text-white/60 text-9xl">
+                    {character.archetype === 'Charming' && '😎'}
+                    {character.archetype === 'Clever' && '🧠'}
+                    {character.archetype === 'Quick' && '⚡'}
+                    {character.archetype === 'Strong' && '💪'}
+                    {character.archetype === 'Tough' && '🛡️'}
+                    {character.archetype === 'Wise' && '🔮'}
+                  </div>
+                )}
               </div>
 
               {/* Character Name */}

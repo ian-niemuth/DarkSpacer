@@ -98,6 +98,9 @@ function CharacterSheet() {
   const [availableAmmo, setAvailableAmmo] = useState([]);
   const [showAmmoModal, setShowAmmoModal] = useState(false);
   const [selectedItemForAmmo, setSelectedItemForAmmo] = useState(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState(null);
+  const [avatarLoadError, setAvatarLoadError] = useState(false);
   const [showUseConfirm, setShowUseConfirm] = useState(false);
   const [selectedConsumable, setSelectedConsumable] = useState(null);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
@@ -518,6 +521,61 @@ function CharacterSheet() {
     }
   };
 
+  const handleAvatarUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      addToast('Image must be smaller than 5MB', 'error');
+      return;
+    }
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      addToast('Only JPG, PNG, GIF, and WEBP images are allowed', 'error');
+      return;
+    }
+
+    try {
+      setAvatarUploading(true);
+      const formData = new FormData();
+      formData.append('avatar', file);
+
+      const response = await api.post(
+        `${API_URL}/characters/${id}/avatar`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        }
+      );
+
+      addToast('Avatar uploaded successfully!', 'success');
+      fetchCharacter(); // Refresh character data
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      addToast(error.response?.data?.error || 'Failed to upload avatar', 'error');
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    if (!confirm('Are you sure you want to remove your avatar?')) return;
+
+    try {
+      await api.delete(`${API_URL}/characters/${id}/avatar`);
+      addToast('Avatar removed successfully!', 'success');
+      fetchCharacter(); // Refresh character data
+    } catch (error) {
+      console.error('Error removing avatar:', error);
+      addToast(error.response?.data?.error || 'Failed to remove avatar', 'error');
+    }
+  };
+
   const handleUseConsumable = async () => {
     if (!selectedConsumable) return;
 
@@ -898,17 +956,60 @@ function CharacterSheet() {
 
       {/* Character Header - Enhanced with HP, AC, and Ability Scores */}
       <div className="bg-gray-800 rounded-lg mb-4 sm:mb-6 border border-gray-700">
-        {/* Top Row - Name and Credits */}
+        {/* Top Row - Avatar, Name and Credits */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 p-4 sm:p-6 pb-3 sm:pb-4 border-b border-gray-700">
-          <div className="flex-1">
-            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1">{character.name}</h1>
-            <p className="text-gray-400 text-base sm:text-base">
-              Level {character.level} {character.species} {character.archetype}
-            </p>
-            <p className="text-gray-500 text-sm">{character.background} • {character.motivation}</p>
-            {character.ship_role && (
-              <p className="text-blue-400 text-sm mt-1">Ship Role: {character.ship_role}</p>
-            )}
+          {/* Avatar Section */}
+          <div className="flex gap-4 flex-1">
+            <div className="relative group flex-shrink-0">
+              <div className="w-24 h-24 sm:w-32 sm:h-32 bg-gray-700 border-2 border-gray-600 rounded-lg overflow-hidden flex items-center justify-center">
+                {character.avatar_url && !avatarLoadError ? (
+                  <img
+                    src={`${WS_URL}${character.avatar_url}`}
+                    alt={character.name}
+                    className="w-full h-full object-cover"
+                    onLoad={() => setAvatarLoadError(false)}
+                    onError={() => setAvatarLoadError(true)}
+                  />
+                ) : (
+                  <div className="text-gray-500 text-4xl sm:text-5xl">👤</div>
+                )}
+              </div>
+              <div className="absolute inset-0 group-hover:bg-black group-hover:bg-opacity-60 transition-all rounded-lg flex items-center justify-center pointer-events-none group-hover:pointer-events-auto">
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-2">
+                  <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-semibold">
+                    {avatarUploading ? 'Uploading...' : (character.avatar_url ? 'Change' : 'Upload')}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleAvatarUpload}
+                      disabled={avatarUploading}
+                    />
+                  </label>
+                  {character.avatar_url && (
+                    <button
+                      onClick={handleAvatarRemove}
+                      className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs font-semibold"
+                      disabled={avatarUploading}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Character Info */}
+            <div className="flex-1 min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1 break-words">{character.name}</h1>
+              <p className="text-gray-400 text-base sm:text-base">
+                Level {character.level} {character.species} {character.archetype}
+              </p>
+              <p className="text-gray-500 text-sm">{character.background} • {character.motivation}</p>
+              {character.ship_role && (
+                <p className="text-blue-400 text-sm mt-1">Ship Role: {character.ship_role}</p>
+              )}
+            </div>
           </div>
           <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-3 sm:text-right">
             <div>
