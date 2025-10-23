@@ -250,6 +250,12 @@ function Dashboard({ user }) {
           >
             ⚔️ Gear Catalog
           </Link>
+          <Link
+            to="/catalog/rules"
+            className="inline-block bg-amber-600 hover:bg-amber-700 text-white px-4 py-3 sm:py-2 rounded font-bold text-center text-base sm:text-sm min-h-[44px] sm:min-h-0 flex items-center justify-center"
+          >
+            📖 Rules Reference
+          </Link>
 
           {/* Other Navigation */}
           <Link

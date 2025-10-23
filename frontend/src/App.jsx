@@ -11,6 +11,7 @@ import AdminShipsPanel from './components/AdminShipsPanel';
 import PlayerShipView from './components/PlayerShipView';
 import ShipCatalog from './components/ShipCatalog';
 import GearCatalog from './components/GearCatalog';
+import RulesReference from './components/RulesReference';
 import CommsCenter from './components/CommsCenter';
 import Communicator from './components/Communicator';
 import CharacterNotes from './components/CharacterNotes';
@@ -408,6 +409,13 @@ function App() {
             path="/catalog/gear"
             element={
               user ? <GearCatalog user={user} /> : <Navigate to="/login" />
+            }
+          />
+
+          <Route
+            path="/catalog/rules"
+            element={
+              user ? <RulesReference /> : <Navigate to="/login" />
             }
           />
 

@@ -790,6 +790,10 @@ export function CreateShipModal({ onClose, onSuccess, showError }) {
                   <option value="Fighter">Fighter</option>
                   <option value="Freighter">Freighter</option>
                   <option value="Capital">Capital Ship</option>
+                  <option value="Explorer">Explorer</option>
+                  <option value="Gunship">Gunship</option>
+                  <option value="Research">Research</option>
+                  <option value="Yacht">Yacht</option>
                 </select>
               </div>
               <div>
