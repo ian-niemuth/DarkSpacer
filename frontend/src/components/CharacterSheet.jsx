@@ -383,11 +383,43 @@ function CharacterSheet() {
   const determineSlot = (item) => {
     const itemType = item.item_type?.toLowerCase();
     const itemName = item.item_name?.toLowerCase();
-    
+    const properties = item.properties || item.full_properties || '';
+
     if (itemType === 'weapon') {
-      return 'primary_weapon';
+      const is2H = properties.includes('2H');
+
+      // 2H weapons always go to primary
+      if (is2H) {
+        return 'primary_weapon';
+      }
+
+      // 1H weapons: check which slot is available
+      const primaryEquipped = equippedGear.find(g => g.equipped_slot === 'primary_weapon');
+      const secondaryEquipped = equippedGear.find(g => g.equipped_slot === 'secondary_weapon' || g.equipped_slot === 'shield');
+
+      // If primary is free, use it
+      if (!primaryEquipped) {
+        return 'primary_weapon';
+      }
+
+      // If primary is occupied but secondary is free, use secondary
+      if (!secondaryEquipped) {
+        return 'secondary_weapon';
+      }
+
+      // Both slots occupied - return null (can't equip)
+      return null;
     }
     if (itemName.includes('shield')) {
+      // Check if dual-wielding (both weapon slots occupied)
+      const primaryEquipped = equippedGear.find(g => g.equipped_slot === 'primary_weapon');
+      const secondaryEquipped = equippedGear.find(g => g.equipped_slot === 'secondary_weapon');
+
+      // Can't equip shield while dual-wielding
+      if (primaryEquipped && secondaryEquipped) {
+        return null;
+      }
+
       return 'shield';
     }
     if (itemName.includes('helmet')) {

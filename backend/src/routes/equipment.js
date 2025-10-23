@@ -151,6 +151,20 @@ async function validateEquip(characterId, itemId, targetSlot) {
       if (equipped[targetSlot]) {
         return { valid: false, error: `${targetSlot} is already occupied` };
       }
+
+      // Check if there's a shield equipped (shields block secondary weapon slot)
+      if (targetSlot === 'secondary_weapon' && equipped.shield) {
+        return { valid: false, error: 'Cannot equip secondary weapon while shield is equipped' };
+      }
+
+      // Also check if the OTHER weapon slot has a 2H weapon
+      const otherSlot = targetSlot === 'primary_weapon' ? 'secondary_weapon' : 'primary_weapon';
+      if (equipped[otherSlot]) {
+        const otherWeaponIs2H = (equipped[otherSlot].properties || '').includes('2H');
+        if (otherWeaponIs2H) {
+          return { valid: false, error: 'Cannot equip weapon - other hand is occupied by 2H weapon' };
+        }
+      }
     }
   } else if (isShield) {
     // Shield takes shield slot + one weapon slot

@@ -307,60 +307,69 @@ function CharacterHUD() {
 
             {/* Equipment & Inventory - Combined */}
             <div className="bg-white/5 border border-white/20 p-6 flex-1 flex flex-col">
-              <div className="text-gray-400 text-2xl font-mono uppercase tracking-wider mb-4">EQUIPMENT & INVENTORY</div>
+              <div className="text-gray-400 text-2xl font-mono uppercase tracking-wider mb-3">EQUIPMENT & INVENTORY</div>
 
-              {/* Equipped Gear */}
-              <div className="space-y-3 mb-6 flex-1 overflow-y-auto">
+              {/* Equipped Gear - Two Column Grid */}
+              <div className="mb-5">
                 {character.equipped_gear && character.equipped_gear.length > 0 ? (
-                  character.equipped_gear.slice(0, 8).map((item, idx) => {
-                    const requiresCell = item.properties && item.properties.includes('EC');
-                    const hasCell = item.loaded_energy_cell_id && item.loaded_energy_cell_id > 0;
-                    const requiresAmmo = item.properties && item.properties.includes('Am');
-                    const hasAmmo = item.loaded_ammo_id && item.loaded_ammo_id > 0;
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {character.equipped_gear.slice(0, 4).map((item, idx) => {
+                      const requiresCell = item.properties && item.properties.includes('EC');
+                      const hasCell = item.loaded_energy_cell_id && item.loaded_energy_cell_id > 0;
+                      const requiresAmmo = item.properties && item.properties.includes('Am');
+                      const hasAmmo = item.loaded_ammo_id && item.loaded_ammo_id > 0;
 
-                    return (
-                      <div key={idx} className="bg-black/30 border border-white/10 p-3 flex justify-between items-center">
-                        <div className="flex-1">
-                          <div className="text-white font-semibold text-lg mb-1">
-                            {item.item_name}
+                      return (
+                        <div key={idx} className="bg-black/30 border border-white/10 p-3 flex flex-col">
+                          <div className="flex justify-between items-start mb-1.5">
+                            <div className="flex-1 min-w-0 mr-3">
+                              <div className="text-white font-bold text-lg leading-tight truncate">
+                                {item.item_name}
+                              </div>
+                            </div>
+                            {(requiresCell || requiresAmmo) && (
+                              <div className="flex gap-2 text-lg flex-shrink-0">
+                                {requiresCell && (
+                                  <span className={hasCell ? 'text-white' : 'text-gray-600'}>
+                                    {hasCell ? '⚡' : '○'}
+                                  </span>
+                                )}
+                                {requiresAmmo && (
+                                  <span className={hasAmmo ? 'text-white' : 'text-gray-600'}>
+                                    {hasAmmo ? '●' : '○'}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
-                          <div className="text-gray-500 text-base flex items-center gap-3 font-mono">
-                            {item.damage && <span>{item.damage}</span>}
-                            {item.range && <span>{item.range}</span>}
-                          </div>
-                        </div>
-                        <div className="flex gap-2 text-xl">
-                          {requiresCell && (
-                            <span className={hasCell ? 'text-white' : 'text-gray-600'}>
-                              {hasCell ? '⚡' : '○'}
-                            </span>
-                          )}
-                          {requiresAmmo && (
-                            <span className={hasAmmo ? 'text-white' : 'text-gray-600'}>
-                              {hasAmmo ? '●' : '○'}
-                            </span>
+                          {(item.damage || item.range) && (
+                            <div className="text-gray-500 text-sm font-mono leading-tight">
+                              {item.damage && <span>{item.damage}</span>}
+                              {item.damage && item.range && <span className="mx-1">•</span>}
+                              {item.range && <span>{item.range}</span>}
+                            </div>
                           )}
                         </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })}
+                  </div>
                 ) : (
-                  <div className="text-gray-600 text-lg">No equipped gear</div>
+                  <div className="text-gray-600 text-base">No equipped gear</div>
                 )}
               </div>
 
               {/* Inventory Capacity */}
               {character.slots_used !== undefined && character.slots_max !== undefined && (
-                <div className="border-t border-white/20 pt-4">
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="text-gray-400 text-xl font-mono uppercase">CAPACITY</span>
-                    <span className="text-white text-4xl font-bold font-mono">
+                <div className="border-t border-white/20 pt-5">
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-gray-400 text-2xl font-mono uppercase">CAPACITY</span>
+                    <span className="text-white text-5xl font-bold font-mono">
                       {character.slots_used} <span className="text-gray-600">/</span> {character.slots_max}
                     </span>
                   </div>
-                  <div className="w-full bg-black/50 border border-white/10 h-10">
+                  <div className="w-full bg-black/50 border border-white/10 h-12">
                     <div
-                      className={`h-10 transition-all duration-500 ${
+                      className={`h-12 transition-all duration-500 ${
                         character.slots_used > character.slots_max
                           ? 'bg-white'
                           : 'bg-white/60'
@@ -371,7 +380,7 @@ function CharacterHUD() {
                     ></div>
                   </div>
                   {character.slots_used > character.slots_max && (
-                    <div className="text-white text-base mt-2 font-mono animate-pulse">
+                    <div className="text-white text-lg mt-3 font-mono animate-pulse">
                       OVERENCUMBERED
                     </div>
                   )}
