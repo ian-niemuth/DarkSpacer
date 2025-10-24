@@ -301,8 +301,10 @@ router.post('/complete-level-up/:characterId', async (req, res) => {
     let enlightenmentIncrease = 0;
     
     // Handle Stat Increase talents
-    if (talent.name === 'Stat Increase' && talent.choice) {
-      const stat = talent.choice.toUpperCase();
+    // Support both "Stat Increase" and "Brilliant Mind" talents
+    if ((talent.name === 'Stat Increase' || talent.name === 'Brilliant Mind') && talent.choice) {
+      // Only apply stat bonus if choice contains a stat abbreviation (not Expert Knowledge, etc.)
+      const choice = talent.choice.toUpperCase();
       const statMap = {
         'INT': 'intelligence',
         'WIS': 'wisdom',
@@ -311,10 +313,13 @@ router.post('/complete-level-up/:characterId', async (req, res) => {
         'DEX': 'dexterity',
         'CHA': 'charisma'
       };
-      
-      if (statMap[stat]) {
-        const fullStatName = statMap[stat];
-        statUpdates[fullStatName] = character[fullStatName] + 2;
+
+      // Extract stat from choices like "+2 INT" or just "INT"
+      for (const [shortName, fullName] of Object.entries(statMap)) {
+        if (choice.includes(shortName)) {
+          statUpdates[fullName] = character[fullName] + 2;
+          break;
+        }
       }
     }
     

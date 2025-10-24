@@ -168,10 +168,10 @@ const TALENT_TABLES = {
       options: ["Specify expertise area"]
     },
     6: {
-      name: "Stat Increase",
-      description: "+2 to Intelligence stat",
+      name: "Brilliant Mind",
+      description: "+2 to Intelligence stat OR +1 to Expert Knowledge checks",
       choice: true,
-      options: ["INT"],
+      options: ["+2 INT", "+1 Expert Knowledge"],
       statBonus: 2
     },
     7: {
@@ -180,10 +180,10 @@ const TALENT_TABLES = {
       statBonus: 1
     },
     8: {
-      name: "Stat Increase",
-      description: "+2 to Intelligence stat",
+      name: "Brilliant Mind",
+      description: "+2 to Intelligence stat OR +1 to Expert Knowledge checks",
       choice: true,
-      options: ["INT"],
+      options: ["+2 INT", "+1 Expert Knowledge"],
       statBonus: 2
     },
     9: {

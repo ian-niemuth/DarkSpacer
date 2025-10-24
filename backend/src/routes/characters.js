@@ -201,7 +201,51 @@ router.post('/', async (req, res) => {
     // Calculate correct initial values using archetype abilities
     const calculatedAC = calculateInitialAC(dexterity, archetype, level || 1);
     const calculatedHP = calculateInitialHP(hp_max, constitution, archetype, level || 1);
-    
+
+    // Apply talent stat bonuses to initial stats
+    let finalStrength = strength;
+    let finalDexterity = dexterity;
+    let finalConstitution = constitution;
+    let finalIntelligence = intelligence;
+    let finalWisdom = wisdom;
+    let finalCharisma = charisma;
+
+    console.log('Character creation - talents received:', talents, 'type:', typeof talents);
+
+    // Parse talents if it's a JSON string
+    let talentsArray = talents;
+    if (typeof talents === 'string') {
+      try {
+        talentsArray = JSON.parse(talents);
+        console.log('Parsed talents:', talentsArray);
+      } catch (e) {
+        console.error('Error parsing talents:', e);
+        talentsArray = [];
+      }
+    }
+
+    if (talentsArray && Array.isArray(talentsArray)) {
+      for (const talent of talentsArray) {
+        console.log('Processing talent:', talent);
+        // Handle stat increase talents
+        if ((talent.name === 'Stat Increase' || talent.name === 'Brilliant Mind') && talent.choice) {
+          const choice = talent.choice.toUpperCase();
+          console.log(`Applying stat bonus for choice: ${choice}`);
+
+          // Extract stat from choices like "+2 INT" or just "INT"
+          if (choice.includes('INT')) {
+            finalIntelligence += 2;
+            console.log(`Applied +2 to INT, new value: ${finalIntelligence}`);
+          }
+          else if (choice.includes('WIS')) finalWisdom += 2;
+          else if (choice.includes('CON')) finalConstitution += 2;
+          else if (choice.includes('STR')) finalStrength += 2;
+          else if (choice.includes('DEX')) finalDexterity += 2;
+          else if (choice.includes('CHA')) finalCharisma += 2;
+        }
+      }
+    }
+
     const result = await pool.query(
       `INSERT INTO characters (
         user_id, name, species, archetype, background, motivation, ship_role,
@@ -213,8 +257,8 @@ router.post('/', async (req, res) => {
       [
         req.user.userId, name, species, archetype, background, motivation, ship_role,
         level, xp, calculatedHP, calculatedHP, calculatedAC, // Use calculated values
-        strength, dexterity, constitution, intelligence, wisdom, charisma,
-        credits, reputation, bounty, luck, 
+        finalStrength, finalDexterity, finalConstitution, finalIntelligence, finalWisdom, finalCharisma,
+        credits, reputation, bounty, luck,
         talents ? JSON.stringify(talents) : null,
         notes,
         triad_powers || '[]'
