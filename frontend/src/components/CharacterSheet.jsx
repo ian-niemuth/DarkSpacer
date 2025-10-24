@@ -1014,7 +1014,8 @@ function CharacterSheet() {
     const bonuses = talents.filter(t => {
       if (t.choice && t.statBonus) {
         const shortName = statName.substring(0, 3).toUpperCase();
-        return t.choice.toUpperCase() === shortName;
+        // Use includes() to match choices like "+2 INT" or just "INT"
+        return t.choice.toUpperCase().includes(shortName);
       }
       if (t.nestedChoice && t.choice && t.choice.includes('+2')) {
         return t.nestedChoice.toUpperCase() === statName.substring(0, 3).toUpperCase();
