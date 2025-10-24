@@ -301,8 +301,8 @@ router.post('/complete-level-up/:characterId', async (req, res) => {
     let enlightenmentIncrease = 0;
     
     // Handle Stat Increase talents
-    // Support both "Stat Increase" and "Brilliant Mind" talents
-    if ((talent.name === 'Stat Increase' || talent.name === 'Brilliant Mind') && talent.choice) {
+    // Support "Stat Increase", "Brilliant Mind", and "Ultimate Choice" talents
+    if ((talent.name === 'Stat Increase' || talent.name === 'Brilliant Mind' || talent.name === 'Ultimate Choice') && talent.choice) {
       // Only apply stat bonus if choice contains a stat abbreviation (not Expert Knowledge, etc.)
       const choice = talent.choice.toUpperCase();
       const statMap = {
@@ -314,11 +314,26 @@ router.post('/complete-level-up/:characterId', async (req, res) => {
         'CHA': 'charisma'
       };
 
-      // Extract stat from choices like "+2 INT" or just "INT"
-      for (const [shortName, fullName] of Object.entries(statMap)) {
-        if (choice.includes(shortName)) {
-          statUpdates[fullName] = character[fullName] + 2;
-          break;
+      // Check if this is a two-stat format: "+1 STAT, +1 STAT"
+      if (choice.includes(',')) {
+        // Split by comma and process each stat
+        const parts = choice.split(',').map(s => s.trim());
+        for (const part of parts) {
+          // Extract stat from format like "+1 STR"
+          for (const [shortName, fullName] of Object.entries(statMap)) {
+            if (part.includes(shortName)) {
+              statUpdates[fullName] = (statUpdates[fullName] || character[fullName]) + 1;
+              break;
+            }
+          }
+        }
+      } else {
+        // Single stat format: "+2 INT" or just "INT"
+        for (const [shortName, fullName] of Object.entries(statMap)) {
+          if (choice.includes(shortName)) {
+            statUpdates[fullName] = character[fullName] + 2;
+            break;
+          }
         }
       }
     }

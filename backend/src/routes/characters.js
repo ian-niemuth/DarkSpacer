@@ -227,21 +227,69 @@ router.post('/', async (req, res) => {
     if (talentsArray && Array.isArray(talentsArray)) {
       for (const talent of talentsArray) {
         console.log('Processing talent:', talent);
-        // Handle stat increase talents
-        if ((talent.name === 'Stat Increase' || talent.name === 'Brilliant Mind') && talent.choice) {
+        // Handle stat increase talents (Stat Increase, Brilliant Mind, Ultimate Choice)
+        if ((talent.name === 'Stat Increase' || talent.name === 'Brilliant Mind' || talent.name === 'Ultimate Choice') && talent.choice) {
           const choice = talent.choice.toUpperCase();
           console.log(`Applying stat bonus for choice: ${choice}`);
 
-          // Extract stat from choices like "+2 INT" or just "INT"
-          if (choice.includes('INT')) {
-            finalIntelligence += 2;
-            console.log(`Applied +2 to INT, new value: ${finalIntelligence}`);
+          // Check if this is a two-stat format: "+1 STAT, +1 STAT"
+          if (choice.includes(',')) {
+            // Split by comma and process each stat
+            const parts = choice.split(',').map(s => s.trim());
+            for (const part of parts) {
+              // Extract stat from format like "+1 STR" and apply +1
+              if (part.includes('INT')) {
+                finalIntelligence += 1;
+                console.log(`Applied +1 to INT, new value: ${finalIntelligence}`);
+              }
+              else if (part.includes('WIS')) {
+                finalWisdom += 1;
+                console.log(`Applied +1 to WIS, new value: ${finalWisdom}`);
+              }
+              else if (part.includes('CON')) {
+                finalConstitution += 1;
+                console.log(`Applied +1 to CON, new value: ${finalConstitution}`);
+              }
+              else if (part.includes('STR')) {
+                finalStrength += 1;
+                console.log(`Applied +1 to STR, new value: ${finalStrength}`);
+              }
+              else if (part.includes('DEX')) {
+                finalDexterity += 1;
+                console.log(`Applied +1 to DEX, new value: ${finalDexterity}`);
+              }
+              else if (part.includes('CHA')) {
+                finalCharisma += 1;
+                console.log(`Applied +1 to CHA, new value: ${finalCharisma}`);
+              }
+            }
+          } else {
+            // Single stat format: "+2 INT" or just "INT"
+            if (choice.includes('INT')) {
+              finalIntelligence += 2;
+              console.log(`Applied +2 to INT, new value: ${finalIntelligence}`);
+            }
+            else if (choice.includes('WIS')) {
+              finalWisdom += 2;
+              console.log(`Applied +2 to WIS, new value: ${finalWisdom}`);
+            }
+            else if (choice.includes('CON')) {
+              finalConstitution += 2;
+              console.log(`Applied +2 to CON, new value: ${finalConstitution}`);
+            }
+            else if (choice.includes('STR')) {
+              finalStrength += 2;
+              console.log(`Applied +2 to STR, new value: ${finalStrength}`);
+            }
+            else if (choice.includes('DEX')) {
+              finalDexterity += 2;
+              console.log(`Applied +2 to DEX, new value: ${finalDexterity}`);
+            }
+            else if (choice.includes('CHA')) {
+              finalCharisma += 2;
+              console.log(`Applied +2 to CHA, new value: ${finalCharisma}`);
+            }
           }
-          else if (choice.includes('WIS')) finalWisdom += 2;
-          else if (choice.includes('CON')) finalConstitution += 2;
-          else if (choice.includes('STR')) finalStrength += 2;
-          else if (choice.includes('DEX')) finalDexterity += 2;
-          else if (choice.includes('CHA')) finalCharisma += 2;
         }
       }
     }

@@ -17,6 +17,11 @@ function LevelUpModal({ character, onClose, onLevelUp }) {
   const [selectedUltimateTalent, setSelectedUltimateTalent] = useState(null); // Full talent object
   const [ultimateTalentChoice, setUltimateTalentChoice] = useState(''); // Sub-choice for the selected talent
 
+  // Ultimate Choice stat distribution
+  const [ultimateStatDistribution, setUltimateStatDistribution] = useState(''); // "+2 to one" or "+1 to two"
+  const [ultimateStat1, setUltimateStat1] = useState(''); // First stat selection
+  const [ultimateStat2, setUltimateStat2] = useState(''); // Second stat selection (for "+1 to two")
+
   const handleInitialLevelUp = async () => {
     setLoading(true);
     setError('');
@@ -108,6 +113,16 @@ function LevelUpModal({ character, onClose, onLevelUp }) {
           return false;
         }
       }
+      // If they chose stats, must select distribution method and stat(s)
+      if (talentChoice.includes('stat')) {
+        if (!ultimateStatDistribution) return false;
+        if (ultimateStatDistribution === '+2 to one') {
+          if (!ultimateStat1) return false;
+        } else if (ultimateStatDistribution === '+1 to two') {
+          if (!ultimateStat1 || !ultimateStat2) return false;
+          if (ultimateStat1 === ultimateStat2) return false; // Must be different stats
+        }
+      }
       return true;
     }
 
@@ -149,8 +164,22 @@ function LevelUpModal({ character, onClose, onLevelUp }) {
           choice: ultimateTalentChoice || null,
           fromUltimateChoice: true // Mark that this came from Ultimate Choice
         };
+      } else if (talent.name === 'Ultimate Choice' && talentChoice.includes('stat')) {
+        // Ultimate Choice + Stats - format the choice based on distribution
+        let formattedChoice;
+        if (ultimateStatDistribution === '+2 to one') {
+          formattedChoice = `+2 ${ultimateStat1}`;
+        } else if (ultimateStatDistribution === '+1 to two') {
+          formattedChoice = `+1 ${ultimateStat1}, +1 ${ultimateStat2}`;
+        }
+
+        completeTalent = {
+          ...talent,
+          choice: formattedChoice,
+          statBonus: 2 // Total bonus is always 2
+        };
       } else {
-        // Normal talent or Ultimate Choice + Stats
+        // Normal talent
         completeTalent = {
           ...talent,
           choice: talentChoice || null,
@@ -458,6 +487,10 @@ function LevelUpModal({ character, onClose, onLevelUp }) {
                               // Reset talent selection when changing primary choice
                               setSelectedUltimateTalent(null);
                               setUltimateTalentChoice('');
+                              // Reset stat selections
+                              setUltimateStatDistribution('');
+                              setUltimateStat1('');
+                              setUltimateStat2('');
                             }}
                             required
                           >
@@ -512,10 +545,96 @@ function LevelUpModal({ character, onClose, onLevelUp }) {
                           </div>
                         )}
 
-                        {/* +2 Stats message */}
+                        {/* Stat Distribution UI */}
                         {talentChoice && talentChoice.includes('stat') && (
-                          <div className="mt-2 p-2 bg-yellow-900 bg-opacity-20 rounded text-xs text-gray-300">
-                            Note: Work with your DM to distribute +2 points to your stats
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-sm font-medium text-purple-300 mb-2">
+                                How would you like to distribute +2 points? *
+                              </label>
+                              <select
+                                className="w-full px-3 py-2 bg-gray-700 border border-purple-500 rounded text-white focus:ring-2 focus:ring-purple-400"
+                                value={ultimateStatDistribution}
+                                onChange={(e) => {
+                                  setUltimateStatDistribution(e.target.value);
+                                  // Reset stat selections when changing distribution method
+                                  setUltimateStat1('');
+                                  setUltimateStat2('');
+                                }}
+                                required
+                              >
+                                <option value="">-- Select Distribution --</option>
+                                <option value="+2 to one">+2 to one stat</option>
+                                <option value="+1 to two">+1 to two different stats</option>
+                              </select>
+                            </div>
+
+                            {/* Single stat selection (+2 to one) */}
+                            {ultimateStatDistribution === '+2 to one' && (
+                              <div>
+                                <label className="block text-sm font-medium text-purple-300 mb-2">
+                                  Which stat gets +2? *
+                                </label>
+                                <select
+                                  className="w-full px-3 py-2 bg-gray-600 border border-purple-400 rounded text-white focus:ring-2 focus:ring-purple-300"
+                                  value={ultimateStat1}
+                                  onChange={(e) => setUltimateStat1(e.target.value)}
+                                  required
+                                >
+                                  <option value="">-- Select Stat --</option>
+                                  <option value="STR">Strength (+2)</option>
+                                  <option value="DEX">Dexterity (+2)</option>
+                                  <option value="CON">Constitution (+2)</option>
+                                  <option value="INT">Intelligence (+2)</option>
+                                  <option value="WIS">Wisdom (+2)</option>
+                                  <option value="CHA">Charisma (+2)</option>
+                                </select>
+                              </div>
+                            )}
+
+                            {/* Two stat selection (+1 to two) */}
+                            {ultimateStatDistribution === '+1 to two' && (
+                              <div className="space-y-3">
+                                <div>
+                                  <label className="block text-sm font-medium text-purple-300 mb-2">
+                                    First stat to increase by +1: *
+                                  </label>
+                                  <select
+                                    className="w-full px-3 py-2 bg-gray-600 border border-purple-400 rounded text-white focus:ring-2 focus:ring-purple-300"
+                                    value={ultimateStat1}
+                                    onChange={(e) => setUltimateStat1(e.target.value)}
+                                    required
+                                  >
+                                    <option value="">-- Select Stat --</option>
+                                    <option value="STR" disabled={ultimateStat2 === 'STR'}>Strength (+1)</option>
+                                    <option value="DEX" disabled={ultimateStat2 === 'DEX'}>Dexterity (+1)</option>
+                                    <option value="CON" disabled={ultimateStat2 === 'CON'}>Constitution (+1)</option>
+                                    <option value="INT" disabled={ultimateStat2 === 'INT'}>Intelligence (+1)</option>
+                                    <option value="WIS" disabled={ultimateStat2 === 'WIS'}>Wisdom (+1)</option>
+                                    <option value="CHA" disabled={ultimateStat2 === 'CHA'}>Charisma (+1)</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-purple-300 mb-2">
+                                    Second stat to increase by +1: *
+                                  </label>
+                                  <select
+                                    className="w-full px-3 py-2 bg-gray-600 border border-purple-400 rounded text-white focus:ring-2 focus:ring-purple-300"
+                                    value={ultimateStat2}
+                                    onChange={(e) => setUltimateStat2(e.target.value)}
+                                    required
+                                  >
+                                    <option value="">-- Select Stat --</option>
+                                    <option value="STR" disabled={ultimateStat1 === 'STR'}>Strength (+1)</option>
+                                    <option value="DEX" disabled={ultimateStat1 === 'DEX'}>Dexterity (+1)</option>
+                                    <option value="CON" disabled={ultimateStat1 === 'CON'}>Constitution (+1)</option>
+                                    <option value="INT" disabled={ultimateStat1 === 'INT'}>Intelligence (+1)</option>
+                                    <option value="WIS" disabled={ultimateStat1 === 'WIS'}>Wisdom (+1)</option>
+                                    <option value="CHA" disabled={ultimateStat1 === 'CHA'}>Charisma (+1)</option>
+                                  </select>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
