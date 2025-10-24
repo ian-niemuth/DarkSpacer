@@ -144,6 +144,7 @@ function PropertiesGuideModal({ onClose }) {
             <h4 className="font-bold text-blue-300 mb-2">💡 Quick Tips</h4>
             <ul className="text-sm text-gray-300 space-y-1">
               <li>• <strong>EC (Energy Cell)</strong> gear needs cells loaded before use</li>
+              <li>• <strong>EC(c) (Consumable Energy Cell)</strong> cells expire in 1 hour and cannot be removed</li>
               <li>• <strong>AP (Armor Piercing)</strong> weapons bypass physical armor</li>
               <li>• <strong>2H (Two-Handed)</strong> weapons need both weapon slots empty</li>
               <li>• <strong>V (Versatile)</strong> weapons deal more damage when used two-handed</li>

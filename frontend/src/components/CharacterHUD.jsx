@@ -14,6 +14,49 @@ function CharacterHUD() {
   const [isPaused, setIsPaused] = useState(false);
   const [fadeState, setFadeState] = useState('fade-in');
   const [avatarLoadErrors, setAvatarLoadErrors] = useState({});
+  const [timerTick, setTimerTick] = useState(0); // Force re-render for timer updates
+
+  // Helper function to format time remaining for display
+  const formatTimeRemaining = (expiresAt) => {
+    if (!expiresAt) return null;
+
+    const now = new Date();
+    const expiry = new Date(expiresAt);
+    const secondsRemaining = Math.floor((expiry - now) / 1000);
+
+    if (secondsRemaining <= 0) {
+      return { text: 'EXPIRED', color: 'text-white/40', urgent: true };
+    }
+
+    const minutes = Math.floor(secondsRemaining / 60);
+    const seconds = secondsRemaining % 60;
+
+    if (minutes < 1) {
+      return {
+        text: `${seconds}s`,
+        color: 'text-white/60',
+        urgent: true
+      };
+    } else if (minutes < 5) {
+      return {
+        text: `${minutes}m ${seconds}s`,
+        color: 'text-white/70',
+        urgent: true
+      };
+    } else if (minutes < 10) {
+      return {
+        text: `${minutes}m ${seconds}s`,
+        color: 'text-white/80',
+        urgent: false
+      };
+    } else {
+      return {
+        text: `${minutes}m`,
+        color: 'text-white',
+        urgent: false
+      };
+    }
+  };
 
   // Fetch all characters (public endpoint with key)
   const fetchCharacters = useCallback(async () => {
@@ -117,6 +160,15 @@ function CharacterHUD() {
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [characters.length, isPaused]);
+
+  // Update timer display every second for real-time countdown
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimerTick(prev => prev + 1); // Increment to force re-render
+    }, 1000); // Update every second
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Helper function to calculate ability modifier
   const getMod = (score) => {
@@ -229,7 +281,7 @@ function CharacterHUD() {
             </div>
 
             {/* Credits & XP */}
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-2 gap-6 mt-auto">
               <div className="bg-white/5 border border-white/20 p-6">
                 <div className="text-gray-400 text-2xl font-mono uppercase tracking-wider mb-3">CREDITS</div>
                 <div className="text-white text-6xl font-bold font-mono">{character.credits}</div>
@@ -310,9 +362,9 @@ function CharacterHUD() {
               <div className="text-gray-400 text-2xl font-mono uppercase tracking-wider mb-3">EQUIPMENT & INVENTORY</div>
 
               {/* Equipped Gear - Two Column Grid */}
-              <div className="mb-5">
+              <div className="mb-4">
                 {character.equipped_gear && character.equipped_gear.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-2.5">
+                  <div className="grid grid-cols-2 gap-2">
                     {character.equipped_gear.slice(0, 4).map((item, idx) => {
                       const requiresCell = item.properties && item.properties.includes('EC');
                       const hasCell = item.loaded_energy_cell_id && item.loaded_energy_cell_id > 0;
@@ -320,8 +372,8 @@ function CharacterHUD() {
                       const hasAmmo = item.loaded_ammo_id && item.loaded_ammo_id > 0;
 
                       return (
-                        <div key={idx} className="bg-black/30 border border-white/10 p-3 flex flex-col">
-                          <div className="flex justify-between items-start mb-1.5">
+                        <div key={idx} className="bg-black/30 border border-white/10 p-2.5 flex flex-col">
+                          <div className="flex justify-between items-start mb-1">
                             <div className="flex-1 min-w-0 mr-3">
                               <div className="text-white font-bold text-lg leading-tight truncate">
                                 {item.item_name}
@@ -342,11 +394,25 @@ function CharacterHUD() {
                               </div>
                             )}
                           </div>
-                          {(item.damage || item.range) && (
-                            <div className="text-gray-500 text-sm font-mono leading-tight">
-                              {item.damage && <span>{item.damage}</span>}
-                              {item.damage && item.range && <span className="mx-1">•</span>}
-                              {item.range && <span>{item.range}</span>}
+                          {(item.damage || item.range || item.energy_cell_expires_at) && (
+                            <div className="flex justify-between items-center gap-2">
+                              {(item.damage || item.range) && (
+                                <div className="text-gray-500 text-base font-mono leading-tight">
+                                  {item.damage && <span>{item.damage}</span>}
+                                  {item.damage && item.range && <span className="mx-1">•</span>}
+                                  {item.range && <span>{item.range}</span>}
+                                </div>
+                              )}
+                              {item.energy_cell_expires_at && (
+                                (() => {
+                                  const timeInfo = formatTimeRemaining(item.energy_cell_expires_at);
+                                  return (
+                                    <div className={`text-base font-mono leading-tight ${timeInfo.color} ${timeInfo.urgent ? 'opacity-80' : ''}`}>
+                                      ⏱️ {timeInfo.text}
+                                    </div>
+                                  );
+                                })()
+                              )}
                             </div>
                           )}
                         </div>

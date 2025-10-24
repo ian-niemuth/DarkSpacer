@@ -33,7 +33,7 @@ router.get('/hud-characters', async (req, res) => {
 
     // For each character, fetch their equipped gear and inventory stats
     for (let character of characters) {
-      // Get equipped gear
+      // Get equipped gear (including energy cell timer info)
       const equippedGear = await pool.query(`
         SELECT
           i.id,
@@ -41,6 +41,8 @@ router.get('/hud-characters', async (req, res) => {
           i.equipped_slot,
           i.loaded_energy_cell_id,
           i.loaded_ammo_id,
+          i.energy_cell_loaded_at,
+          i.energy_cell_expires_at,
           COALESCE(g.damage, i.damage) as damage,
           COALESCE(g.range, i.range) as range,
           COALESCE(g.properties, i.properties) as properties

@@ -95,6 +95,9 @@ function CharacterSheet() {
   const [availableCells, setAvailableCells] = useState([]);
   const [showCellModal, setShowCellModal] = useState(false);
   const [selectedItemForCell, setSelectedItemForCell] = useState(null);
+  const [showConsumableCellWarning, setShowConsumableCellWarning] = useState(false);
+  const [pendingCellId, setPendingCellId] = useState(null);
+  const [energyCellTimers, setEnergyCellTimers] = useState({});
   const [availableAmmo, setAvailableAmmo] = useState([]);
   const [showAmmoModal, setShowAmmoModal] = useState(false);
   const [selectedItemForAmmo, setSelectedItemForAmmo] = useState(null);
@@ -244,6 +247,7 @@ function CharacterSheet() {
       fetchPoweredGear(); // Explicitly refresh powered gear
       fetchEquippedGear(); // Explicitly refresh equipped gear
       fetchAvailableCells(); // Explicitly refresh available cells
+      fetchEnergyCellTimers(); // Explicitly refresh energy cell timers
       fetchAvailableAmmo(); // Explicitly refresh available ammo
     });
 
@@ -252,6 +256,7 @@ function CharacterSheet() {
       fetchCharacter(); // Refresh character data (including AC)
       fetchEquippedGear(); // Refresh equipped gear
       fetchPoweredGear(); // Refresh powered gear in case powered armor was equipped/unequipped
+      fetchEnergyCellTimers(); // Refresh energy cell timers
     });
 
     newSocket.on('item_removed', (data) => {
@@ -263,6 +268,7 @@ function CharacterSheet() {
       fetchEquippedGear(); // Refresh equipped gear in case it was removed
       fetchPoweredGear(); // Refresh powered gear
       fetchAvailableCells(); // Refresh available cells
+      fetchEnergyCellTimers(); // Refresh energy cell timers
       fetchAvailableAmmo(); // Refresh available ammo
     });
 
@@ -296,10 +302,44 @@ function CharacterSheet() {
       fetchUnreadCount();
     });
 
+    newSocket.on('energy_cell_warning', (data) => {
+      // Display warning toast with appropriate styling
+      console.log('[CharacterSheet] Energy cell warning:', data);
+      addToast(data.message, 'warning');
+      playNotificationSound();
+      // Refresh timers to update display
+      fetchEnergyCellTimers();
+    });
+
+    newSocket.on('energy_cell_expired', (data) => {
+      // Display expiration notification
+      console.log('[CharacterSheet] Energy cell expired:', data);
+      addToast(data.message, 'error');
+      playNotificationSound();
+      // Refresh all relevant data
+      fetchCharacter();
+      fetchPoweredGear();
+      fetchEnergyCellTimers();
+      fetchAvailableCells();
+    });
+
     return () => {
       newSocket.disconnect();
     };
   }, [id]);
+
+  // Update timer display every second for real-time countdown
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Force re-render to update displayed times
+      // This works because formatTimeRemaining calculates based on current time
+      if (Object.keys(energyCellTimers).length > 0) {
+        setEnergyCellTimers(prev => ({...prev})); // Shallow copy triggers re-render
+      }
+    }, 1000); // Update every second
+
+    return () => clearInterval(interval);
+  }, [energyCellTimers]);
 
   const fetchCharacter = async () => {
     try {
@@ -313,6 +353,7 @@ function CharacterSheet() {
       fetchEquippedGear();
       fetchPoweredGear();
       fetchAvailableCells();
+      fetchEnergyCellTimers();
       fetchShips();
       checkLevelUpStatus();
 
@@ -449,6 +490,62 @@ function CharacterSheet() {
     }
   };
 
+  const fetchEnergyCellTimers = async () => {
+    try {
+      const response = await api.get(`${API_URL}/inventory/energy-cell-timers/${id}`);
+      // Convert array to object keyed by itemId for easy lookup
+      const timersMap = {};
+      response.data.forEach(timer => {
+        timersMap[timer.itemId] = timer;
+      });
+      setEnergyCellTimers(timersMap);
+    } catch (error) {
+      console.error('Error fetching energy cell timers:', error);
+    }
+  };
+
+  // Helper function to format time remaining for display
+  const formatTimeRemaining = (expiresAt) => {
+    if (!expiresAt) return null;
+
+    const now = new Date();
+    const expiry = new Date(expiresAt);
+    const secondsRemaining = Math.floor((expiry - now) / 1000);
+
+    if (secondsRemaining <= 0) {
+      return { text: 'EXPIRED', color: 'text-red-500', urgent: true };
+    }
+
+    const minutes = Math.floor(secondsRemaining / 60);
+    const seconds = secondsRemaining % 60;
+
+    if (minutes < 1) {
+      return {
+        text: `${seconds}s`,
+        color: 'text-red-400',
+        urgent: true
+      };
+    } else if (minutes < 5) {
+      return {
+        text: `${minutes}m ${seconds}s`,
+        color: 'text-orange-400',
+        urgent: true
+      };
+    } else if (minutes < 10) {
+      return {
+        text: `${minutes}m ${seconds}s`,
+        color: 'text-yellow-400',
+        urgent: false
+      };
+    } else {
+      return {
+        text: `${minutes}m`,
+        color: 'text-green-400',
+        urgent: false
+      };
+    }
+  };
+
   const fetchAvailableAmmo = async () => {
     try {
       const response = await api.get(`${API_URL}/inventory/ammo-clips/available/${id}`);
@@ -478,6 +575,22 @@ function CharacterSheet() {
   };
 
   const handleLoadCell = async (cellId) => {
+    // Check if item has EC(c) property (consumable energy cell)
+    const properties = selectedItemForCell?.properties || selectedItemForCell?.full_properties || '';
+    const isConsumable = properties.includes('EC(c)');
+
+    if (isConsumable) {
+      // Show confirmation modal for consumable cells
+      setPendingCellId(cellId);
+      setShowConsumableCellWarning(true);
+      return;
+    }
+
+    // Non-consumable cell - load immediately
+    await performLoadCell(cellId);
+  };
+
+  const performLoadCell = async (cellId) => {
     try {
       const response = await api.post(
         `${API_URL}/inventory/load-cell/${id}/${selectedItemForCell.id}`,
@@ -488,14 +601,26 @@ function CharacterSheet() {
       }
       setShowCellModal(false);
       setSelectedItemForCell(null);
+      setShowConsumableCellWarning(false);
+      setPendingCellId(null);
       fetchCharacter();
       fetchPoweredGear();
       fetchAvailableCells();
+      fetchEnergyCellTimers();
       checkCommunicatorPower();
     } catch (error) {
       console.error('Error loading cell:', error);
       addToast(error.response?.data?.error || 'Failed to load energy cell', 'error');
     }
+  };
+
+  const confirmLoadConsumableCell = async () => {
+    await performLoadCell(pendingCellId);
+  };
+
+  const cancelLoadConsumableCell = () => {
+    setShowConsumableCellWarning(false);
+    setPendingCellId(null);
   };
 
   const handleUnloadCell = async (itemId) => {
@@ -510,6 +635,7 @@ function CharacterSheet() {
       fetchCharacter();
       fetchPoweredGear();
       fetchAvailableCells();
+      fetchEnergyCellTimers();
       checkCommunicatorPower();
     } catch (error) {
       console.error('Error unloading cell:', error);
@@ -1185,8 +1311,22 @@ function CharacterSheet() {
                   <div>
                     <div className="font-bold text-white">{item.item_name}</div>
                     {hasEnergyCell(item) ? (
-                      <div className="text-sm text-green-400 mt-1">
-                        ⚡ Energy Cell Loaded ✓
+                      <div className="text-sm mt-1">
+                        {energyCellTimers[item.id] ? (
+                          (() => {
+                            const timeInfo = formatTimeRemaining(energyCellTimers[item.id].expiresAt);
+                            return (
+                              <div className="space-y-1">
+                                <div className="text-green-400">⚡ Energy Cell Loaded ✓</div>
+                                <div className={`font-mono ${timeInfo.color} ${timeInfo.urgent ? 'font-bold animate-pulse' : ''}`}>
+                                  ⏱️ Expires in: {timeInfo.text}
+                                </div>
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          <div className="text-green-400">⚡ Energy Cell Loaded ✓</div>
+                        )}
                       </div>
                     ) : (
                       <div className="text-sm text-yellow-400 mt-1">
@@ -1679,7 +1819,8 @@ function CharacterSheet() {
                 />
               </div>
               <p className="text-xs text-gray-400 mt-1">
-                Inventory capacity based on STR {inventoryInfo.maxSlots}
+                Inventory capacity based on STR {character?.str || 10}
+                {character?.archetype === 'Strong' && character?.con && getModifier(character.con) > 0 && ` (+${getModifier(character.con)} from Hauler)`}
                 {inventoryInfo.percentFull >= 100 && ' - OVER-ENCUMBERED!'}
               </p>
             </div>
@@ -2085,6 +2226,53 @@ function CharacterSheet() {
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Consumable Energy Cell Warning Modal */}
+      {showConsumableCellWarning && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-lg p-4 sm:p-6 max-w-md w-full border border-red-500 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-lg sm:text-xl font-bold text-red-500 mb-3 sm:mb-4 flex items-center gap-2">
+              <span className="text-2xl">⚠️</span>
+              Consumable Energy Cell Warning
+            </h2>
+
+            <div className="text-white space-y-3 mb-6">
+              <p className="text-base">
+                You are about to load a <span className="text-yellow-400 font-bold">consumable energy cell [EC(c)]</span> into {selectedItemForCell?.item_name}.
+              </p>
+
+              <div className="bg-red-900 bg-opacity-30 border border-red-700 rounded p-3 space-y-2">
+                <p className="font-bold text-red-400">Important:</p>
+                <ul className="list-disc list-inside space-y-1 text-sm">
+                  <li>Once loaded, this cell <span className="font-bold">cannot be removed</span> by players</li>
+                  <li>The cell will <span className="font-bold">expire in 1 hour</span></li>
+                  <li>When expired, the cell will be <span className="font-bold">automatically deleted</span></li>
+                  <li>The item will be <span className="font-bold">unequipped automatically</span> when the cell expires</li>
+                </ul>
+              </div>
+
+              <p className="text-yellow-400 text-sm">
+                ⏱️ You will receive warnings at 10 minutes, 5 minutes, and 1 minute before expiration.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={cancelLoadConsumableCell}
+                className="flex-1 bg-gray-600 hover:bg-gray-500 text-white px-4 py-3 rounded text-base min-h-[44px] font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmLoadConsumableCell}
+                className="flex-1 bg-red-600 hover:bg-red-500 text-white px-4 py-3 rounded text-base min-h-[44px] font-bold"
+              >
+                Confirm Load
+              </button>
+            </div>
           </div>
         </div>
       )}

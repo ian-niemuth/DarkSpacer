@@ -21,6 +21,49 @@ function AdminPanel() {
   const [quickActionNote, setQuickActionNote] = useState('');
   const [socket, setSocket] = useState(null);
   const [hudKey, setHudKey] = useState('darkspace-hud-2024'); // Default fallback
+  const [timerTick, setTimerTick] = useState(0); // Force re-render for timer updates
+
+  // Helper function to format time remaining for display
+  const formatTimeRemaining = (expiresAt) => {
+    if (!expiresAt) return null;
+
+    const now = new Date();
+    const expiry = new Date(expiresAt);
+    const secondsRemaining = Math.floor((expiry - now) / 1000);
+
+    if (secondsRemaining <= 0) {
+      return { text: 'EXPIRED', color: 'text-red-500', urgent: true };
+    }
+
+    const minutes = Math.floor(secondsRemaining / 60);
+    const seconds = secondsRemaining % 60;
+
+    if (minutes < 1) {
+      return {
+        text: `${seconds}s`,
+        color: 'text-red-400',
+        urgent: true
+      };
+    } else if (minutes < 5) {
+      return {
+        text: `${minutes}m ${seconds}s`,
+        color: 'text-orange-400',
+        urgent: true
+      };
+    } else if (minutes < 10) {
+      return {
+        text: `${minutes}m ${seconds}s`,
+        color: 'text-yellow-400',
+        urgent: false
+      };
+    } else {
+      return {
+        text: `${minutes}m`,
+        color: 'text-green-400',
+        urgent: false
+      };
+    }
+  };
 
   // Slot assignments state
   const [slotLayout, setSlotLayout] = useState('large-top'); // 'large-top', 'large-bottom', 'small-top', 'small-bottom'
@@ -71,6 +114,15 @@ function AdminPanel() {
     return () => {
       newSocket.disconnect();
     };
+  }, []);
+
+  // Update timer display every second for real-time countdown
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimerTick(prev => prev + 1); // Increment to force re-render
+    }, 1000); // Update every second
+
+    return () => clearInterval(interval);
   }, []);
 
   const fetchAllCharacters = async () => {
@@ -778,7 +830,17 @@ function AdminPanel() {
                                   )}
                                   {requiresCell && (
                                     hasCell ? (
-                                      <span className="text-green-400"> • ⚡</span>
+                                      <>
+                                        <span className="text-green-400"> • ⚡</span>
+                                        {item.energy_cell_expires_at && (() => {
+                                          const timeInfo = formatTimeRemaining(item.energy_cell_expires_at);
+                                          return (
+                                            <span className={`${timeInfo.color} font-mono ml-1`}>
+                                              (⏱️ {timeInfo.text})
+                                            </span>
+                                          );
+                                        })()}
+                                      </>
                                     ) : (
                                       <span className="text-yellow-400"> • ⚠️</span>
                                     )
@@ -838,7 +900,17 @@ function AdminPanel() {
                                     </span>
                                     {item.equipped && <span className="text-blue-400 text-xs">[E]</span>}
                                     {hasCell ? (
-                                      <span className="text-green-400 font-bold">⚡ Loaded</span>
+                                      <>
+                                        <span className="text-green-400 font-bold">⚡ Loaded</span>
+                                        {item.energy_cell_expires_at && (() => {
+                                          const timeInfo = formatTimeRemaining(item.energy_cell_expires_at);
+                                          return (
+                                            <span className={`${timeInfo.color} font-mono text-xs`}>
+                                              (⏱️ {timeInfo.text})
+                                            </span>
+                                          );
+                                        })()}
+                                      </>
                                     ) : (
                                       <span className="text-yellow-400">⚠️ Empty</span>
                                     )}

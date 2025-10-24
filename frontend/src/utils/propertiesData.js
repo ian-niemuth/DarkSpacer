@@ -31,6 +31,11 @@ export const PROPERTIES_DATA = {
     description: 'This weapon/armor requires an energy cell to use. On a critical failure (natural 1 on 1d20 attack roll) for weapons, or critical hit (20 on 1d20 attack roll) against armor, the energy cell is exhausted and will need to be swapped out as an action.',
     category: 'Weapon/Armor'
   },
+  'EC(c)': {
+    name: 'Consumable Energy Cell',
+    description: 'This weapon/armor requires a consumable energy cell to use. Once loaded, the cell cannot be removed by players and expires after 1 hour. When expired, the cell is automatically deleted and the item is unequipped. Warnings are sent at 10, 5, and 1 minute before expiration.',
+    category: 'Weapon/Armor'
+  },
   'EG': {
     name: 'Energy Generator',
     description: 'This ship weapon requires an energy generator to use. On a critical failure (natural 1 on 1d20 attack roll), the energy generator shorts out and must be repaired.',

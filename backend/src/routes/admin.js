@@ -142,7 +142,8 @@ router.get('/characters', async (req, res) => {
       result.rows.map(async (char) => {
         const equippedResult = await pool.query(
           `SELECT i.id, item_name, equipped_slot, damage, range, properties,
-                  loaded_energy_cell_id, loaded_ammo_id
+                  loaded_energy_cell_id, loaded_ammo_id,
+                  energy_cell_loaded_at, energy_cell_expires_at
            FROM inventory i
            WHERE character_id = $1 AND equipped = true
            ORDER BY
@@ -158,6 +159,7 @@ router.get('/characters', async (req, res) => {
         // Get all powered gear (EC items) - both equipped and unequipped
         const poweredGearResult = await pool.query(
           `SELECT i.id, i.item_name, i.equipped, i.equipped_slot, i.loaded_energy_cell_id,
+                  i.energy_cell_loaded_at, i.energy_cell_expires_at,
                   g.properties
            FROM inventory i
            LEFT JOIN gear_database g ON LOWER(i.item_name) = LOWER(g.name)

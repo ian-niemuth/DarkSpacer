@@ -1274,7 +1274,8 @@ router.post('/load-cell/:characterId/:itemId', authenticateToken, async (req, re
 
     // Verify the item belongs to character and has EC property
     const itemResult = await pool.query(`
-      SELECT i.*, g.properties
+      SELECT i.*,
+             COALESCE(g.properties, i.properties) as properties
       FROM inventory i
       LEFT JOIN gear_database g ON LOWER(i.item_name) = LOWER(g.name)
       WHERE i.id = $1 AND i.character_id = $2
@@ -1356,26 +1357,70 @@ router.post('/load-cell/:characterId/:itemId', authenticateToken, async (req, re
       );
     }
 
-    // Load the cell into the item
-    await pool.query(
-      'UPDATE inventory SET loaded_energy_cell_id = $1 WHERE id = $2',
-      [actualCellId, itemId]
-    );
+    // Check if item has EC(c) property - consumable energy cell
+    const isConsumable = properties.includes('EC(c)');
+
+    // Load the cell into the item and set timers if consumable
+    if (isConsumable) {
+      await pool.query(`
+        UPDATE inventory
+        SET loaded_energy_cell_id = $1,
+            energy_cell_loaded_at = NOW(),
+            energy_cell_expires_at = NOW() + INTERVAL '1 hour'
+        WHERE id = $2
+      `, [actualCellId, itemId]);
+    } else {
+      await pool.query(
+        'UPDATE inventory SET loaded_energy_cell_id = $1 WHERE id = $2',
+        [actualCellId, itemId]
+      );
+    }
+
+    // Get timer info if consumable
+    let timerInfo = null;
+    if (isConsumable) {
+      const timerResult = await pool.query(
+        'SELECT energy_cell_loaded_at, energy_cell_expires_at FROM inventory WHERE id = $1',
+        [itemId]
+      );
+      timerInfo = {
+        loaded_at: timerResult.rows[0].energy_cell_loaded_at,
+        expires_at: timerResult.rows[0].energy_cell_expires_at
+      };
+    }
 
     // Log activity
     await pool.query(`
       INSERT INTO activity_log (character_id, action_type, description)
       VALUES ($1, 'energy_cell_loaded', $2)
-    `, [characterId, `Loaded energy cell into ${item.item_name}`]);
+    `, [characterId, `Loaded ${isConsumable ? 'consumable ' : ''}energy cell into ${item.item_name}`]);
 
     // Emit socket event
     const io = req.app.get('io');
-    io.to(`character_${characterId}`).emit('character_updated', {
-      message: `Energy cell loaded into ${item.item_name}!`
+    const updateMessage = {
+      message: `Energy cell loaded into ${item.item_name}!`,
+      itemId: itemId,
+      isConsumable: isConsumable
+    };
+
+    if (isConsumable && timerInfo) {
+      updateMessage.timer = timerInfo;
+    }
+
+    io.to(`character_${characterId}`).emit('character_updated', updateMessage);
+    io.to(`character_${characterId}`).emit('energy_cell_timer_started', {
+      characterId,
+      itemId,
+      itemName: item.item_name,
+      ...timerInfo
     });
     io.emit('admin_refresh'); // Notify admin panel
 
-    res.json({ message: 'Energy cell loaded successfully' });
+    res.json({
+      message: `Energy cell loaded successfully${isConsumable ? ' - 1 hour timer started' : ''}`,
+      isConsumable,
+      ...(timerInfo && { timer: timerInfo })
+    });
 
   } catch (error) {
     console.error('Error loading energy cell:', error);
@@ -1402,20 +1447,32 @@ router.post('/unload-cell/:characterId/:itemId', authenticateToken, async (req, 
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
-    // Get the item with loaded cell
-    const itemResult = await pool.query(
-      'SELECT * FROM inventory WHERE id = $1 AND character_id = $2',
-      [itemId, characterId]
-    );
+    // Get the item with loaded cell and its properties
+    const itemResult = await pool.query(`
+      SELECT i.*,
+             COALESCE(g.properties, i.properties) as properties
+      FROM inventory i
+      LEFT JOIN gear_database g ON LOWER(i.item_name) = LOWER(g.name)
+      WHERE i.id = $1 AND i.character_id = $2
+    `, [itemId, characterId]);
 
     if (itemResult.rows.length === 0) {
       return res.status(404).json({ error: 'Item not found' });
     }
 
     const item = itemResult.rows[0];
+    const properties = item.properties || '';
 
     if (!item.loaded_energy_cell_id) {
       return res.status(400).json({ error: 'No energy cell loaded in this item' });
+    }
+
+    // Check if item has EC(c) property - consumable energy cells cannot be unloaded (except by admins)
+    const isConsumable = properties.includes('EC(c)');
+    if (isConsumable && !req.user.isAdmin) {
+      return res.status(400).json({
+        error: 'Consumable energy cells cannot be removed once loaded. Only admins can force removal.'
+      });
     }
 
     const cellId = item.loaded_energy_cell_id;
@@ -1435,16 +1492,25 @@ router.post('/unload-cell/:characterId/:itemId', authenticateToken, async (req, 
     const cell = cellResult.rows[0];
 
     // Unload the cell from the item AND unequip if it was equipped
+    // Also clear timer fields if it's a consumable cell
     if (wasEquipped) {
-      await pool.query(
-        'UPDATE inventory SET loaded_energy_cell_id = NULL, equipped = false, equipped_slot = NULL WHERE id = $1',
-        [itemId]
-      );
+      await pool.query(`
+        UPDATE inventory
+        SET loaded_energy_cell_id = NULL,
+            equipped = false,
+            equipped_slot = NULL,
+            energy_cell_loaded_at = NULL,
+            energy_cell_expires_at = NULL
+        WHERE id = $1
+      `, [itemId]);
     } else {
-      await pool.query(
-        'UPDATE inventory SET loaded_energy_cell_id = NULL WHERE id = $1',
-        [itemId]
-      );
+      await pool.query(`
+        UPDATE inventory
+        SET loaded_energy_cell_id = NULL,
+            energy_cell_loaded_at = NULL,
+            energy_cell_expires_at = NULL
+        WHERE id = $1
+      `, [itemId]);
     }
 
     // Try to merge this cell back into an existing stack
@@ -1534,17 +1600,20 @@ router.get('/powered-gear/:characterId', authenticateToken, async (req, res) => 
 
     // Get all EC gear with their loaded cell status (but NOT energy cells themselves)
     const poweredGear = await pool.query(`
-      SELECT 
+      SELECT
         i.*,
-        g.properties,
+        COALESCE(g.properties, i.properties) as properties,
         cell.item_name as loaded_cell_name
       FROM inventory i
       LEFT JOIN gear_database g ON LOWER(i.item_name) = LOWER(g.name)
       LEFT JOIN inventory cell ON i.loaded_energy_cell_id = cell.id
       WHERE i.character_id = $1
-        AND g.properties LIKE '%EC%'
+        AND (
+          g.properties LIKE '%EC%'
+          OR i.properties LIKE '%EC%'
+        )
         AND LOWER(i.item_name) NOT LIKE '%energy cell%'
-      ORDER BY 
+      ORDER BY
         CASE i.item_type
           WHEN 'weapon' THEN 1
           WHEN 'armor' THEN 2
@@ -1900,6 +1969,77 @@ router.delete('/discard/:characterId/:itemId', authenticateToken, async (req, re
   } catch (error) {
     console.error('Error discarding item:', error);
     res.status(500).json({ error: 'Failed to discard item' });
+  }
+});
+
+// ============================================
+// ENERGY CELL TIMER SYSTEM
+// ============================================
+
+// GET - Get energy cell timers for a character's items
+router.get('/energy-cell-timers/:characterId', authenticateToken, async (req, res) => {
+  const { characterId } = req.params;
+
+  try {
+    // Verify ownership
+    const charResult = await pool.query(
+      'SELECT user_id FROM characters WHERE id = $1',
+      [characterId]
+    );
+
+    if (charResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Character not found' });
+    }
+
+    if (charResult.rows[0].user_id !== req.user.userId && !req.user.isAdmin) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Get all items with active consumable energy cell timers
+    const timers = await pool.query(`
+      SELECT
+        i.id as item_id,
+        i.item_name,
+        i.equipped,
+        i.equipped_slot,
+        i.energy_cell_loaded_at,
+        i.energy_cell_expires_at,
+        EXTRACT(EPOCH FROM (i.energy_cell_expires_at - NOW())) as seconds_remaining,
+        g.properties
+      FROM inventory i
+      LEFT JOIN gear_database g ON LOWER(i.item_name) = LOWER(g.name)
+      WHERE i.character_id = $1
+        AND i.energy_cell_expires_at IS NOT NULL
+        AND i.loaded_energy_cell_id IS NOT NULL
+      ORDER BY i.energy_cell_expires_at ASC
+    `, [characterId]);
+
+    // Format the response with calculated time remaining
+    const formattedTimers = timers.rows.map(timer => {
+      const secondsRemaining = Math.max(0, parseFloat(timer.seconds_remaining));
+      const minutesRemaining = Math.floor(secondsRemaining / 60);
+      const hoursRemaining = Math.floor(minutesRemaining / 60);
+
+      return {
+        itemId: timer.item_id,
+        itemName: timer.item_name,
+        equipped: timer.equipped,
+        equippedSlot: timer.equipped_slot,
+        loadedAt: timer.energy_cell_loaded_at,
+        expiresAt: timer.energy_cell_expires_at,
+        secondsRemaining,
+        minutesRemaining,
+        hoursRemaining,
+        isExpired: secondsRemaining <= 0,
+        properties: timer.properties
+      };
+    });
+
+    res.json(formattedTimers);
+
+  } catch (error) {
+    console.error('Error fetching energy cell timers:', error);
+    res.status(500).json({ error: 'Failed to fetch energy cell timers' });
   }
 });
 

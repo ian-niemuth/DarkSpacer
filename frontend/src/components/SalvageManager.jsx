@@ -12,6 +12,8 @@ function SalvageManager() {
   const [showGiveModal, setShowGiveModal] = useState(null); // { salvageId, itemName }
   const [selectedCharacter, setSelectedCharacter] = useState('');
   const [quantity, setQuantity] = useState(1);
+  const [giveError, setGiveError] = useState('');
+  const [giveSuccess, setGiveSuccess] = useState('');
 
   const tiers = ['0-3', '4-6', '7-9', '10+'];
 
@@ -70,6 +72,14 @@ function SalvageManager() {
     setFilteredItems(filtered);
   };
 
+  const closeGiveModal = () => {
+    setShowGiveModal(null);
+    setSelectedCharacter('');
+    setQuantity(1);
+    setGiveError('');
+    setGiveSuccess('');
+  };
+
   const handleGiveSalvage = async () => {
     if (!selectedCharacter || !showGiveModal) return;
 
@@ -80,16 +90,22 @@ function SalvageManager() {
         quantity: parseInt(quantity)
       });
 
-      setActionResult(`✅ ${response.data.message}`);
-      setShowGiveModal(null);
-      setSelectedCharacter('');
-      setQuantity(1);
-      setTimeout(() => setActionResult(''), 3000);
+      setGiveSuccess(response.data.message || 'Successfully gave salvage to character!');
+
+      // Show success message in modal for 1.5 seconds, then close
+      setTimeout(() => {
+        closeGiveModal();
+      }, 1500);
     } catch (error) {
       console.error('Error giving salvage:', error);
+      // Show error only inside modal, don't close modal
       const errorMsg = error.response?.data?.error || error.message || 'Failed to give salvage';
-      setActionResult(`❌ ${errorMsg}`);
-      setTimeout(() => setActionResult(''), 5000);
+      setGiveError(errorMsg);
+
+      // Clear error after 5 seconds so user can try again
+      setTimeout(() => {
+        setGiveError('');
+      }, 5000);
     }
   };
 
@@ -228,6 +244,19 @@ function SalvageManager() {
           <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full border border-gray-700">
             <h2 className="text-xl font-bold text-white mb-4">🔧 Give Salvage</h2>
 
+            {/* Success/Error Messages in Modal */}
+            {giveError && (
+              <div className="mb-4 bg-red-900 bg-opacity-50 border border-red-600 text-red-200 px-4 py-3 rounded">
+                {giveError}
+              </div>
+            )}
+
+            {giveSuccess && (
+              <div className="mb-4 bg-green-900 bg-opacity-50 border border-green-600 text-green-200 px-4 py-3 rounded">
+                {giveSuccess}
+              </div>
+            )}
+
             <div className="mb-4 p-3 bg-gray-900 rounded border border-gray-700">
               <div className="text-sm text-gray-400 mb-1">Item:</div>
               <div className="text-white font-semibold">{showGiveModal.itemName}</div>
@@ -274,11 +303,7 @@ function SalvageManager() {
                 Give Item
               </button>
               <button
-                onClick={() => {
-                  setShowGiveModal(null);
-                  setSelectedCharacter('');
-                  setQuantity(1);
-                }}
+                onClick={closeGiveModal}
                 className="flex-1 bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded"
               >
                 Cancel

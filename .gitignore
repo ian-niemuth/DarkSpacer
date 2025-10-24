@@ -49,3 +49,6 @@ temp/
 
 # Archive folder
 _ARCHIVED/
+
+#Avatars
+*.jpg

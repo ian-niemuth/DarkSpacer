@@ -61,6 +61,9 @@ const starMapRoutes = require('./routes/star-map');
 const publicRoutes = require('./routes/public');
 // const spaceRoutes = require('./routes/space'); // DEPRECATED - Will be refactored later
 
+// Background jobs
+const { initEnergyCellCleanupJob } = require('./utils/energyCellCleanup');
+
 const app = express();
 const server = http.createServer(app);
 
@@ -240,7 +243,7 @@ server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📡 API available at http://localhost:${PORT}/api`);
   console.log(`🔌 Socket.IO ready for real-time updates`);
-  
+
   pool.query('SELECT NOW()', (err, res) => {
     if (err) {
       console.error('❌ Database connection failed:', err.message);
@@ -248,6 +251,9 @@ server.listen(PORT, () => {
       console.log('✅ Database connected successfully');
     }
   });
+
+  // Start background jobs
+  initEnergyCellCleanupJob(io);
 });
 
 module.exports = server;

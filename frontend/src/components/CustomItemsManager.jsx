@@ -10,6 +10,11 @@ function CustomItemsManager() {
   const [success, setSuccess] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [showGiveModal, setShowGiveModal] = useState(false);
+  const [itemToGive, setItemToGive] = useState(null);
+  const [characters, setCharacters] = useState([]);
+  const [giveError, setGiveError] = useState('');
+  const [giveSuccess, setGiveSuccess] = useState('');
 
   // Form state
   const [formData, setFormData] = useState({
@@ -160,6 +165,64 @@ function CustomItemsManager() {
     setShowCreateForm(true);
     setError('');
     setSuccess('');
+  };
+
+  const fetchCharacters = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_URL}/characters`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setCharacters(response.data);
+    } catch (err) {
+      console.error('Error fetching characters:', err);
+      setError('Failed to load characters');
+    }
+  };
+
+  const openGiveModal = (item) => {
+    setItemToGive(item);
+    setShowGiveModal(true);
+    fetchCharacters();
+  };
+
+  const closeGiveModal = () => {
+    setShowGiveModal(false);
+    setItemToGive(null);
+    setCharacters([]);
+    setGiveError('');
+    setGiveSuccess('');
+  };
+
+  const handleGiveToPlayer = async (characterId) => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(
+        `${API_URL}/inventory/give-item/${characterId}`,
+        {
+          itemName: itemToGive.name,
+          quantity: 1
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setGiveSuccess(`Successfully gave "${itemToGive.name}" to the character!`);
+      fetchCustomItems(); // Refresh to update usage count
+
+      // Show success message in modal for 1.5 seconds, then close
+      setTimeout(() => {
+        closeGiveModal();
+      }, 1500);
+    } catch (err) {
+      console.error('Error giving item:', err);
+      // Show error only inside modal, don't close modal
+      setGiveError(err.response?.data?.error || 'Failed to give item to player');
+
+      // Clear error after 5 seconds so user can try again
+      setTimeout(() => {
+        setGiveError('');
+      }, 5000);
+    }
   };
 
   const handleEditItem = async (e) => {
@@ -559,11 +622,11 @@ function CustomItemsManager() {
                   value={formData.properties}
                   onChange={(e) => setFormData({ ...formData, properties: e.target.value })}
                   className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:border-green-500 focus:outline-none"
-                  placeholder="e.g., EC, AP, 2H (comma separated)"
+                  placeholder="e.g., EC, EC(c), AP, 2H (comma separated)"
                 />
                 <div className="text-xs text-gray-400 mt-1">
-                  Common: 2H (Two-Handed), 1H (One-Hand), EC (Energy Cell), AP (Armor Piercing), 
-                  Bl (Blast), Am (Ammo), R (Repeating), Th (Thrown), V (Versatile)
+                  Common: 2H (Two-Handed), 1H (One-Hand), EC (Energy Cell), EC(c) (Consumable),
+                  AP (Armor Piercing), Bl (Blast), Am (Ammo), R (Repeating), Th (Thrown), V (Versatile)
                 </div>
               </div>
 
@@ -807,8 +870,15 @@ function CustomItemsManager() {
                     </div>
                   </div>
 
-                  {/* Edit and Delete Buttons */}
+                  {/* Give, Edit and Delete Buttons */}
                   <div className="ml-4 flex gap-2">
+                    <button
+                      onClick={() => openGiveModal(item)}
+                      className="px-4 py-2 rounded font-bold bg-green-600 hover:bg-green-700 text-white transition"
+                      title="Give this item to a player"
+                    >
+                      🎁 Give to player
+                    </button>
                     <button
                       onClick={() => startEditItem(item)}
                       className="px-4 py-2 rounded font-bold bg-blue-600 hover:bg-blue-700 text-white transition"
@@ -869,6 +939,74 @@ function CustomItemsManager() {
           </div>
         )}
       </div>
+
+      {/* Give to Player Modal */}
+      {showGiveModal && itemToGive && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-lg max-w-md w-full border-2 border-green-500">
+            <div className="bg-gray-900 border-b border-gray-700 px-6 py-4 flex justify-between items-center">
+              <h3 className="text-xl font-bold text-white">
+                Give "{itemToGive.name}" to Player
+              </h3>
+              <button
+                onClick={closeGiveModal}
+                className="text-gray-400 hover:text-white text-2xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-6 max-h-[60vh] overflow-y-auto">
+              {/* Success/Error Messages in Modal */}
+              {giveError && (
+                <div className="mb-4 bg-red-900 bg-opacity-50 border border-red-600 text-red-200 px-4 py-3 rounded">
+                  {giveError}
+                </div>
+              )}
+
+              {giveSuccess && (
+                <div className="mb-4 bg-green-900 bg-opacity-50 border border-green-600 text-green-200 px-4 py-3 rounded">
+                  {giveSuccess}
+                </div>
+              )}
+
+              <p className="text-gray-300 mb-4">
+                Select a character to receive this item:
+              </p>
+
+              {characters.length === 0 ? (
+                <div className="text-center text-gray-400 py-4">
+                  Loading characters...
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {characters.map((character) => (
+                    <button
+                      key={character.id}
+                      onClick={() => handleGiveToPlayer(character.id)}
+                      className="w-full bg-gray-700 hover:bg-gray-600 text-white px-4 py-3 rounded text-left transition"
+                    >
+                      <div className="font-bold">{character.name}</div>
+                      <div className="text-sm text-gray-400">
+                        Level {character.level} {character.species} - {character.archetype}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-gray-900 border-t border-gray-700 px-6 py-4">
+              <button
+                onClick={closeGiveModal}
+                className="w-full bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
